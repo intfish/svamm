@@ -1,0 +1,9 @@
+trust_host_cas: false
+max_connections: 256
+strict: false
+# svamm deny-by-default model matches hosts by SNI + DNS pin without interception, so strict is disabled here.
+# set `strict: true` (and enable tls.intercept) to opt into the stricter, interception-required semantics.
+# tls:
+#     enabled: true
+#     verify_upstream: true
+#     block_quic: true

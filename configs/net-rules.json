@@ -1,0 +1,38 @@
+{
+    "network": {
+        "allow": [
+            "*.debian.org:tcp:80",
+            "*.debian.org:tcp:443",
+
+            "nixos.org:tcp:443",
+            "*.nixos.org:tcp:443",
+
+            "docker.com:tcp:443",
+            "docker.io:tcp:443",
+            "*.docker.com:tcp:443",
+            "*.docker.io:tcp:443",
+
+            "postgresql.org:tcp:443",
+            "*.postgresql.org:tcp:443",
+
+            "docs.rs:tcp:443",
+            "crates.io:tcp:443",
+            "*.crates.io:tcp:443",
+            "static.crates.io:tcp:443",
+            "static.rust-lang.org:tcp:443",
+
+            "npmjs.com:tcp:443",
+            "npmjs.org:tcp:443",
+            "*.npmjs.org:tcp:443",
+
+            "playwright.azureedge.net:tcp:443",
+            "playwright.dev:tcp:443",
+            "*.playwright.dev:tcp:443",
+
+            "github.com:tcp:443",
+            "*.github.com:tcp:443",
+            "*.githubusercontent.com:tcp:443",
+            "ghcr.io:tcp:443"
+        ]
+    }
+}

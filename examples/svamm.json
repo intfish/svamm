@@ -1,0 +1,32 @@
+{
+  "image": "127.0.0.1:50000/my/custom:latest",
+  "network": {
+    "allow": [
+      "pypi.org:tcp:443",
+      "files.pythonhosted.org:tcp:443",
+      "alpinelinux.org:tcp:443",
+      "*.alpinelinux.org:tcp:443",
+      "ziglang.org:tcp:443",
+      "*.ziglang.org:tcp:443"
+    ],
+    "ports": ["127.0.0.1:1234:1234"]
+  },
+
+  "mounts": [
+    {
+      "src": "/home/example/some-reference",
+      "dest": "/home/agent/reference",
+      "mode": "ro"
+    },
+    {
+      "src": "/home/example/another-writable-dir",
+      "dest": "/home/agent/foobar",
+      "mode": "rw"
+    }
+  ],
+
+  "envs": {
+    "MY_KEY": "plain-value",
+    "SECRET": "${HOST_SECRET}"
+  }
+}

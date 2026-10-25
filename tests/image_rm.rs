@@ -7,7 +7,7 @@
 
 mod common;
 
-use common::{oci_config, TestEnv, DIGEST_D, DIGEST_E};
+use common::{DIGEST_D, DIGEST_E, TestEnv, oci_config};
 
 #[test]
 fn image_rm_deletes_unreferenced_image_from_registry_and_cache() {

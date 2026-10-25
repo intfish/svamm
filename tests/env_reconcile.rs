@@ -8,7 +8,7 @@
 
 mod common;
 
-use common::{TestEnv, DIGEST_B};
+use common::{DIGEST_B, TestEnv};
 
 /// Build the seeded config for a flat sandbox whose main rw mount is `proj`
 /// (which must already contain a `svamm.json`) and whose durable env starts

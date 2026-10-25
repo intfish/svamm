@@ -65,6 +65,9 @@ pub struct Registry {
 	pub data_dir: String,
 	/// guest-write quota for the registry data mount.
 	pub quota: String,
+	/// how long commands wait for the registry to answer after starting it.
+	/// zero disables the wait.
+	pub ready_timeout_ms: u64,
 	/// repository name used for the svamm image inside the registry.
 	pub repo: String,
 }
@@ -155,6 +158,7 @@ impl Default for Registry {
 		let name = env_str("SVAMM_REGISTRY_NAME", "svamm-registry");
 		let data = env_str("SVAMM_REGISTRY_DATA", "");
 		let quota = env_str("SVAMM_REGISTRY_QUOTA", "32G");
+		let ready_timeout_ms = env_u64("SVAMM_REGISTRY_READY_TIMEOUT_MS", 30_000);
 		Self {
 			name,
 			host_port: port,
@@ -166,6 +170,7 @@ impl Default for Registry {
 				data
 			},
 			quota,
+			ready_timeout_ms,
 			repo: "svamm".to_string(),
 		}
 	}
@@ -347,6 +352,11 @@ impl Config {
 		}
 		let quota = env_str("SVAMM_REGISTRY_QUOTA", &self.registry.quota);
 		self.registry.quota = quota;
+		let ready_timeout_ms = env_u64(
+			"SVAMM_REGISTRY_READY_TIMEOUT_MS",
+			self.registry.ready_timeout_ms,
+		);
+		self.registry.ready_timeout_ms = ready_timeout_ms;
 		let vm = env_str("SVAMM_IMAGES_VM", &self.images.vm);
 		self.images.vm = vm;
 		let registry = env_str("SVAMM_IMAGES_REGISTRY", &self.images.registry);
@@ -440,6 +450,14 @@ fn public_image_ref(kind: &str) -> String {
 }
 
 fn env_u16(key: &str, default: u16) -> u16 {
+	std::env::var(key)
+		.ok()
+		.and_then(|value| value.parse().ok())
+		.unwrap_or(default)
+}
+
+/// a parseable `u64` environment value, or `default` otherwise.
+fn env_u64(key: &str, default: u64) -> u64 {
 	std::env::var(key)
 		.ok()
 		.and_then(|value| value.parse().ok())
@@ -576,6 +594,20 @@ mod tests {
 		match original {
 			Some(value) => unsafe { std::env::set_var("SVAMM_REGISTRY_QUOTA", value) },
 			None => unsafe { std::env::remove_var("SVAMM_REGISTRY_QUOTA") },
+		}
+	}
+
+	#[test]
+	fn registry_ready_timeout_defaults_and_env_override_apply() {
+		let _guard = ENV_LOCK.lock().unwrap();
+		let original = std::env::var_os("SVAMM_REGISTRY_READY_TIMEOUT_MS");
+		unsafe { std::env::remove_var("SVAMM_REGISTRY_READY_TIMEOUT_MS") };
+		assert_eq!(Config::default().registry.ready_timeout_ms, 30_000);
+		unsafe { std::env::set_var("SVAMM_REGISTRY_READY_TIMEOUT_MS", "500") };
+		assert_eq!(Config::default().registry.ready_timeout_ms, 500);
+		match original {
+			Some(value) => unsafe { std::env::set_var("SVAMM_REGISTRY_READY_TIMEOUT_MS", value) },
+			None => unsafe { std::env::remove_var("SVAMM_REGISTRY_READY_TIMEOUT_MS") },
 		}
 	}
 
@@ -869,12 +901,16 @@ mod tests {
 
 	#[test]
 	fn parse_network_strict_rejects_invalid_values() {
-		assert!(parse_network_strict("strict: on\n")
-			.unwrap_err()
-			.contains("expected true or false"));
-		assert!(parse_network_strict("strict: maybe\n")
-			.unwrap_err()
-			.contains("expected true or false"));
+		assert!(
+			parse_network_strict("strict: on\n")
+				.unwrap_err()
+				.contains("expected true or false")
+		);
+		assert!(
+			parse_network_strict("strict: maybe\n")
+				.unwrap_err()
+				.contains("expected true or false")
+		);
 	}
 
 	#[test]

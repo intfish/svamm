@@ -31,13 +31,13 @@ pub fn ensure_one(name: &str, path: &Path) {
 	let Some(content) = embedded(name) else {
 		return;
 	};
-	if let Some(parent) = path.parent() {
-		if let Err(err) = std::fs::create_dir_all(parent) {
-			ui::warn(format!(
-				"failed to create config directory {}: {err}",
-				parent.display()
-			));
-		}
+	if let Some(parent) = path.parent()
+		&& let Err(err) = std::fs::create_dir_all(parent)
+	{
+		ui::warn(format!(
+			"failed to create config directory {}: {err}",
+			parent.display()
+		));
 	}
 	if let Err(err) = std::fs::write(path, content) {
 		ui::warn(format!(

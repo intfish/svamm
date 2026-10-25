@@ -18,8 +18,8 @@ pub fn is_slug(name: &str) -> bool {
 pub fn require_slug(name: &str) -> Result<(), String> {
 	if !is_slug(name) {
 		return Err(format!(
-            "invalid sandbox name '{name}': must be a slug (alphanumeric, '.', '_', '-'; no spaces; max 128 chars)"
-        ));
+			"invalid sandbox name '{name}': must be a slug (alphanumeric, '.', '_', '-'; no spaces; max 128 chars)"
+		));
 	}
 	Ok(())
 }

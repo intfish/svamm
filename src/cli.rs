@@ -69,6 +69,12 @@ pub struct NetCli {
 }
 
 #[derive(Debug, clap::Args)]
+pub struct MountsCli {
+	/// Sandbox name.
+	pub name: String,
+}
+
+#[derive(Debug, clap::Args)]
 pub struct StartCli {
 	/// Sandbox name.
 	pub name: String,
@@ -216,6 +222,8 @@ pub enum Command {
 	List(ListCli),
 	/// Lists a sandbox's network policy.
 	Net(NetCli),
+	/// Lists a sandbox's mounts.
+	Mounts(MountsCli),
 	/// Starts a sandbox.
 	Start(StartCli),
 	/// Stops a sandbox (-a: all).

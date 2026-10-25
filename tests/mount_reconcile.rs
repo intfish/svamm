@@ -8,7 +8,7 @@
 
 mod common;
 
-use common::{TestEnv, DIGEST_B};
+use common::{DIGEST_B, TestEnv};
 
 /// Build the seeded config for a flat sandbox whose main rw mount is `proj`
 /// (which must already contain a `svamm.json`) and whose durable mounts start
@@ -206,14 +206,14 @@ async fn start_persists_project_mount_change_and_keeps_foreign_mounts() {
 		"rw project mount keeps its quota"
 	);
 	// The applied guest set now owns the new mount.
-	let applied: Vec<String> = env.read_state("alpha").expect("state after start")["mounts"]
-		["applied"]
-		.as_array()
-		.cloned()
-		.unwrap_or_default()
-		.iter()
-		.filter_map(|v| v.as_str().map(str::to_string))
-		.collect();
+	let applied: Vec<String> =
+		env.read_state("alpha").expect("state after start")["mounts"]["applied"]
+			.as_array()
+			.cloned()
+			.unwrap_or_default()
+			.iter()
+			.filter_map(|v| v.as_str().map(str::to_string))
+			.collect();
 	assert!(
 		applied.contains(&"/home/agent/extra".to_string()),
 		"applied set must own the new mount: {applied:?}"

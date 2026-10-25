@@ -144,10 +144,10 @@ fn resolve_env_value(key: &str, value: &str) -> Result<String, String> {
 /// the env list a sandbox boots with when created: the generated registry
 /// proxy var first, then any project `envs` in key order.
 pub(crate) fn desired_env(config: &Config, project: Option<&Path>) -> Result<Vec<String>, String> {
-	if let Some(project) = project {
-		if let Some(envs) = project_envs(project)? {
-			return desired_env_entries(config, &envs);
-		}
+	if let Some(project) = project
+		&& let Some(envs) = project_envs(project)?
+	{
+		return desired_env_entries(config, &envs);
 	}
 	Ok(vec![format!(
 		"{REGISTRY_PROXY_ENV}={}",
@@ -304,9 +304,11 @@ mod tests {
 			"svamm.json",
 			r#"{"image": {"reference": "127.0.0.1:50000/acme:latest"}}"#,
 		);
-		assert!(project_image(&file)
-			.unwrap_err()
-			.contains("\"image\" must be a string"));
+		assert!(
+			project_image(&file)
+				.unwrap_err()
+				.contains("\"image\" must be a string")
+		);
 	}
 
 	#[test]

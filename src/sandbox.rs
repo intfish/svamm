@@ -3,8 +3,8 @@
 //! list svamm sandboxes, resolve handles by name, and extract information from
 //! a sandbox's persisted config JSON.
 
-use microsandbox::sandbox::{Sandbox, SandboxHandle, SandboxStatus};
 use microsandbox::SandboxListBuilder;
+use microsandbox::sandbox::{Sandbox, SandboxHandle, SandboxStatus};
 
 use crate::config;
 

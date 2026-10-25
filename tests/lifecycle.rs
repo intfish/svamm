@@ -5,7 +5,7 @@
 
 mod common;
 
-use common::{oci_config, TestEnv, DIGEST_A, DIGEST_B};
+use common::{DIGEST_A, DIGEST_B, TestEnv, oci_config};
 
 /// seed a sandbox whose main rw mount points at a host project directory.
 async fn seed_project_sandbox(env: &TestEnv, name: &str, status: &str, proj_host: &str) {
@@ -184,14 +184,41 @@ async fn net_prints_sandbox_network_policy() {
 	let stdout = env.run_ok(false, &["net", "alpha"]);
 	assert!(stdout.contains("default egress:  allow"));
 	assert!(stdout.contains("default ingress: deny"));
-	assert!(stdout.contains("allow egress  to host"));
-	assert!(stdout.contains("allow egress  to example.com"));
-	assert!(stdout.contains("deny  egress  to *.tracking.com"));
-	assert!(stdout.contains(&format!("(tcp, port {})", env.port)));
-	assert!(stdout.contains("(tcp, port 443)"));
+	assert!(stdout.contains("ACTION"));
+	assert!(stdout.contains("DIRECTION"));
+	assert!(stdout.contains("DEST"));
+	assert!(stdout.contains("PROTOCOL"));
+	assert!(stdout.contains("PORT"));
+	let port = env.port.to_string();
+	let rows: [[&str; 5]; 3] = [
+		["allow", "egress", "host", "tcp", &port],
+		["allow", "egress", "example.com", "tcp", "443"],
+		["deny", "egress", "*.tracking.com", "any", "any"],
+	];
+	for cells in rows {
+		// each rule renders as one aligned table row.
+		assert!(
+			stdout
+				.lines()
+				.any(|line| line.split_whitespace().eq(cells.iter().copied())),
+			"missing rule row {cells:?}; got: {stdout}"
+		);
+	}
 	assert!(stdout.contains("published ports (2):"));
-	assert!(stdout.contains("   1  9000:80"));
-	assert!(stdout.contains("   2  0.0.0.0:8081:81/udp"));
+	assert!(stdout.contains("HOST"));
+	assert!(stdout.contains("GUEST"));
+	assert!(
+		stdout.lines().any(|line| line
+			.split_whitespace()
+			.eq(["9000", "80", "tcp"].iter().copied())),
+		"missing tcp port row; got: {stdout}"
+	);
+	assert!(
+		stdout.lines().any(|line| line
+			.split_whitespace()
+			.eq(["0.0.0.0:8081", "81", "udp"].iter().copied())),
+		"missing udp port row; got: {stdout}"
+	);
 }
 
 #[tokio::test]
@@ -219,8 +246,18 @@ async fn net_prints_published_ports_without_policy() {
 		.await;
 	let stdout = env.run_ok(false, &["net", "alpha"]);
 	assert!(stdout.contains("published ports (2):"));
-	assert!(stdout.contains("   1  9000:80"));
-	assert!(stdout.contains("   2  5353:53/udp"));
+	assert!(
+		stdout.lines().any(|line| line
+			.split_whitespace()
+			.eq(["9000", "80", "tcp"].iter().copied())),
+		"missing tcp port row; got: {stdout}"
+	);
+	assert!(
+		stdout.lines().any(|line| line
+			.split_whitespace()
+			.eq(["5353", "53", "udp"].iter().copied())),
+		"missing udp port row; got: {stdout}"
+	);
 	assert!(
 		!stdout.contains("has no network policy"),
 		"ports-only sandbox must not warn about a missing policy"
@@ -246,6 +283,94 @@ async fn net_validates_slug() {
 	let env = TestEnv::new();
 	env.init_db().await;
 	common::expect_stderr_contains(&env, &["net", "bad name"], "invalid sandbox name");
+}
+
+#[tokio::test]
+async fn mounts_prints_sandbox_mounts() {
+	let env = TestEnv::new();
+	env.init_db().await;
+	let mut config = oci_config(env.port, "alpha", "/home/agent/proj", DIGEST_A);
+	config["mounts"] = serde_json::json!([
+		{
+			"type": "Bind",
+			"host": "/home/user/proj",
+			"guest": "/home/agent/proj",
+			"readonly": false,
+			"quota_mib": 32768
+		},
+		{
+			"type": "Bind",
+			"host": "/home/user/readonly",
+			"guest": "/home/agent/extra",
+			"readonly": true
+		},
+		{
+			"type": "Tmpfs",
+			"guest": "/tmp",
+			"size_mib": 2048,
+			"readonly": false
+		}
+	]);
+	env.seed_sandbox("alpha", "Stopped", Some(("svamm", "managed")), config)
+		.await;
+	let stdout = env.run_ok(false, &["mounts", "alpha"]);
+	assert!(
+		stdout.contains("mounts (3):"),
+		"missing mounts header; got: {stdout}"
+	);
+	assert!(
+		stdout.contains("SOURCE") && stdout.contains("DEST"),
+		"missing table header; got: {stdout}"
+	);
+	let rows: Vec<Vec<&str>> = stdout
+		.lines()
+		.map(|line| line.split_whitespace().collect())
+		.collect();
+	assert!(
+		rows.iter()
+			.any(|row| *row == ["/home/user/proj", "/home/agent/proj", "rw", "32", "GiB"]),
+		"missing rw mount row; got: {stdout}"
+	);
+	assert!(
+		rows.iter()
+			.any(|row| *row == ["/home/user/readonly", "/home/agent/extra", "ro", "-"]),
+		"missing ro mount row; got: {stdout}"
+	);
+	assert!(
+		rows.iter()
+			.any(|row| *row == ["[tmpfs]", "/tmp", "rw", "2", "GiB"]),
+		"missing tmpfs mount row; got: {stdout}"
+	);
+}
+
+#[tokio::test]
+async fn mounts_reports_sandbox_without_mounts() {
+	let env = TestEnv::new();
+	env.init_db().await;
+	seed_delta(&env).await;
+	let stdout = env.run_ok(false, &["mounts", "delta"]);
+	assert!(stdout.contains("has no mounts"));
+}
+
+#[tokio::test]
+async fn mounts_fails_for_unknown_sandbox() {
+	let env = TestEnv::new();
+	env.init_db().await;
+	common::expect_stderr_contains(&env, &["mounts", "nope"], "sandbox 'nope' does not exist");
+}
+
+#[tokio::test]
+async fn mounts_requires_a_name() {
+	let env = TestEnv::new();
+	env.init_db().await;
+	env.run_fail(false, &["mounts"]);
+}
+
+#[tokio::test]
+async fn mounts_validates_slug() {
+	let env = TestEnv::new();
+	env.init_db().await;
+	common::expect_stderr_contains(&env, &["mounts", "bad name"], "invalid sandbox name");
 }
 
 #[tokio::test]

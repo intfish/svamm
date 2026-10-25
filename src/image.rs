@@ -149,13 +149,17 @@ pub async fn build(config: &Config, args: &crate::cli::ImageBuildCli) -> anyhow:
 
 /// `svamm image ls` - list images stored in the local registry.
 ///
-/// when the registry is unreachable, svamm tries to bring it up once. if it
-/// still does not answer, a warning with the repair hint is printed instead
-/// of failing. each row carries the sandbox-facing pull uri.
+/// when the registry is unreachable, svamm tries to bring it up and waits for
+/// it to answer. if it still does not answer, a warning with the repair hint
+/// is printed instead of failing. each row carries the sandbox-facing pull
+/// uri.
 pub async fn list(config: &Config, _args: &crate::cli::ImageListCli) -> anyhow::Result<()> {
 	let mut catalog = crate::registry::registry_catalog(config);
 	if catalog.is_none() {
 		let _ = crate::registry::ensure_registry(config).await;
+		if !config::dry_run() {
+			let _ = crate::registry::wait_ready(config).await;
+		}
 		catalog = crate::registry::registry_catalog(config);
 	}
 	let Some(mut repositories) = catalog else {
@@ -170,7 +174,7 @@ pub async fn list(config: &Config, _args: &crate::cli::ImageListCli) -> anyhow::
 		ui::warn_note("no images in the local registry");
 		return Ok(());
 	}
-	let mut table = ui::Table::new(&["REPOSITORY", "TAG", "PULL"]);
+	let mut table = ui::Table::new(&["REPOSITORY", "TAG", "SIZE", "PULL"]);
 	let mut listed = 0;
 	for repository in repositories {
 		let mut tags = crate::registry::registry_tags_for(config, &repository);
@@ -181,11 +185,14 @@ pub async fn list(config: &Config, _args: &crate::cli::ImageListCli) -> anyhow::
 			continue;
 		}
 		for tag in tags {
+			let size = crate::registry::registry_manifest_size(config, &repository, &tag)
+				.map(human_size)
+				.unwrap_or_else(|| "-".to_string());
 			let pull = format!(
 				"svamm.internal:{}/{repository}:{tag}",
 				config.registry.proxy_port
 			);
-			table.add_row(vec![repository.clone(), tag, pull]);
+			table.add_row(vec![repository.clone(), tag, size, pull]);
 			listed += 1;
 		}
 	}
@@ -276,6 +283,33 @@ fn base_tag(reference: &str) -> String {
 		.ok()
 		.and_then(|parsed| parsed.tag().map(str::to_string))
 		.unwrap_or_else(|| "latest".to_string())
+}
+
+/// format a stored image size for the table (decimal units, one decimal).
+fn human_size(bytes: u64) -> String {
+	const KB: u64 = 1_000;
+	const MB: u64 = 1_000_000;
+	const GB: u64 = 1_000_000_000;
+	if bytes >= GB {
+		format_size(bytes, GB, "GB")
+	} else if bytes >= MB {
+		format_size(bytes, MB, "MB")
+	} else if bytes >= KB {
+		format_size(bytes, KB, "KB")
+	} else {
+		format!("{bytes} B")
+	}
+}
+
+/// format a byte count in `unit` steps with at most one decimal, whole when exact.
+fn format_size(bytes: u64, unit: u64, label: &str) -> String {
+	let whole = bytes / unit;
+	let first_decimal = (bytes % unit) * 10 / unit;
+	if first_decimal == 0 {
+		format!("{whole} {label}")
+	} else {
+		format!("{whole}.{first_decimal} {label}")
+	}
 }
 
 /// the name to store a mirrored image under in the local registry, derived
@@ -459,7 +493,9 @@ mod tests {
 		assert_eq!(base_tag("ghcr.io/acme/vm:9"), "9");
 		assert_eq!(base_tag("ghcr.io/acme/vm"), "latest");
 		assert_eq!(
-			base_tag("ghcr.io/acme/vm@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+			base_tag(
+				"ghcr.io/acme/vm@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+			),
 			"latest"
 		);
 		assert_eq!(base_tag("not a ref!!"), "latest");
@@ -510,11 +546,13 @@ mod tests {
 			name: "acme/agent:latest".to_string(),
 			no_cache: false,
 		};
-		assert!(build(&config, &missing_dockerfile)
-			.await
-			.unwrap_err()
-			.to_string()
-			.contains("no Dockerfile"));
+		assert!(
+			build(&config, &missing_dockerfile)
+				.await
+				.unwrap_err()
+				.to_string()
+				.contains("no Dockerfile")
+		);
 
 		std::fs::write(dir.path().join("Dockerfile"), "FROM scratch\n").unwrap();
 		let bad_name = crate::cli::ImageBuildCli {
@@ -522,11 +560,13 @@ mod tests {
 			name: "not-a-tag".to_string(),
 			no_cache: false,
 		};
-		assert!(build(&config, &bad_name)
-			.await
-			.unwrap_err()
-			.to_string()
-			.contains("--name must be <repo>:<tag>"));
+		assert!(
+			build(&config, &bad_name)
+				.await
+				.unwrap_err()
+				.to_string()
+				.contains("--name must be <repo>:<tag>")
+		);
 	}
 
 	#[test]
@@ -540,5 +580,17 @@ mod tests {
 			docker_build_args(tag, "images/agent", true),
 			vec!["build", "--no-cache", "-t", tag, "images/agent"]
 		);
+	}
+
+	#[test]
+	fn human_size_formats_decimal_units() {
+		assert_eq!(human_size(0), "0 B");
+		assert_eq!(human_size(512), "512 B");
+		assert_eq!(human_size(2048), "2 KB");
+		assert_eq!(human_size(1_500_000), "1.5 MB");
+		assert_eq!(human_size(1048576), "1 MB");
+		assert_eq!(human_size(1_250_000_000), "1.2 GB");
+		assert_eq!(human_size(2_147_483_648), "2.1 GB");
+		assert_eq!(human_size(2_000_000_000), "2 GB");
 	}
 }

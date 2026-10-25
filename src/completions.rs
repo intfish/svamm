@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use clap::CommandFactory;
-use clap_complete::{aot, Generator, Shell};
+use clap_complete::{Generator, Shell, aot};
 
 use crate::cli;
 use crate::config;
@@ -29,7 +29,7 @@ pub const BIN_NAMES: [&str; 2] = ["svamm", "svm"];
 
 /// commands whose single positional argument is the name of an existing
 /// sandbox. these get live name completion from `list -q`.
-const NAME_COMMANDS: [&str; 6] = ["net", "start", "stop", "restart", "rm", "run"];
+const NAME_COMMANDS: [&str; 7] = ["net", "mounts", "start", "stop", "restart", "rm", "run"];
 
 /// render the completion script for `shell` targeting `bin_name`.
 fn render(shell: Shell, bin_name: &str) -> anyhow::Result<Vec<u8>> {
@@ -487,7 +487,7 @@ mod tests {
 	#[test]
 	fn dynamic_zsh_targets_alias_binary() {
 		let zsh = String::from_utf8(render(Shell::Zsh, "svm").unwrap()).unwrap();
-		assert_eq!(zsh.matches(":name -- Sandbox name:_svm_names").count(), 6);
+		assert_eq!(zsh.matches(":name -- Sandbox name:_svm_names").count(), 7);
 		assert!(zsh.contains("_svm_names()"));
 		assert!(zsh.contains("#compdef svm"));
 	}
@@ -523,7 +523,7 @@ mod tests {
 			),
 			"fish must register a dynamic source"
 		);
-		assert!(fish.contains("net start stop restart rm run"));
+		assert!(fish.contains("net mounts start stop restart rm run"));
 	}
 
 	#[test]

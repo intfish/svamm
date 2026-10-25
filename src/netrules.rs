@@ -230,26 +230,32 @@ mod tests {
 			"badnetwork.json",
 			r#"{"network": "not-an-object"}"#,
 		);
-		assert!(merge(&badnetwork, None)
-			.unwrap_err()
-			.contains("expected an object with a \"network\" object"));
+		assert!(
+			merge(&badnetwork, None)
+				.unwrap_err()
+				.contains("expected an object with a \"network\" object")
+		);
 
 		let badallow = write_json(
 			dir.path(),
 			"badallow.json",
 			r#"{"network": {"allow": "x"}}"#,
 		);
-		assert!(merge(&badallow, None)
-			.unwrap_err()
-			.contains("network.allow must be a list of strings"));
+		assert!(
+			merge(&badallow, None)
+				.unwrap_err()
+				.contains("network.allow must be a list of strings")
+		);
 
 		let baddeny = write_json(
 			dir.path(),
 			"baddeny.json",
 			r#"{"network": {"deny": [1, 2]}}"#,
 		);
-		assert!(merge(&baddeny, None)
-			.unwrap_err()
-			.contains("network.deny must be a list of strings"));
+		assert!(
+			merge(&baddeny, None)
+				.unwrap_err()
+				.contains("network.deny must be a list of strings")
+		);
 	}
 }

@@ -5,7 +5,7 @@
 
 mod common;
 
-use common::{oci_config, TestEnv, DIGEST_A, DIGEST_B, DIGEST_D, DIGEST_E, DIGEST_F};
+use common::{DIGEST_A, DIGEST_B, DIGEST_D, DIGEST_E, DIGEST_F, TestEnv, oci_config};
 
 /// an arbitrary kept tag name.
 /// it survives pruning only because an existing sandbox pins its digest.

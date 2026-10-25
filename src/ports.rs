@@ -21,17 +21,19 @@ pub struct PortMapping {
 }
 
 impl PortMapping {
+	/// the host-side bind address and port, without the guest mapping.
+	pub fn host_endpoint(&self) -> String {
+		if self.bind == IpAddr::V4(std::net::Ipv4Addr::LOCALHOST) {
+			self.host_port.to_string()
+		} else {
+			format!("{}:{}", self.bind, self.host_port)
+		}
+	}
+
 	/// the msb `--port` style string for this mapping.
 	pub fn to_port_string(&self) -> String {
 		let proto = if self.udp { "/udp" } else { "" };
-		if self.bind == IpAddr::V4(std::net::Ipv4Addr::LOCALHOST) {
-			format!("{}:{}{}", self.host_port, self.guest_port, proto)
-		} else {
-			format!(
-				"{}:{}:{}{}",
-				self.bind, self.host_port, self.guest_port, proto
-			)
-		}
+		format!("{}:{}{}", self.host_endpoint(), self.guest_port, proto)
 	}
 
 	/// the typed persisted spec for this mapping.
@@ -228,20 +230,28 @@ mod tests {
 
 	#[test]
 	fn parse_rejects_invalid_specs() {
-		assert!(parse_port("9000")
-			.unwrap_err()
-			.contains("expected HOST:GUEST"));
+		assert!(
+			parse_port("9000")
+				.unwrap_err()
+				.contains("expected HOST:GUEST")
+		);
 		assert!(parse_port("a:b").unwrap_err().contains("host port 'a'"));
 		assert!(parse_port("9000:x").unwrap_err().contains("guest port 'x'"));
-		assert!(parse_port("99999:80")
-			.unwrap_err()
-			.contains("host port '99999'"));
-		assert!(parse_port("1.2.3.4.5:9000:80")
-			.unwrap_err()
-			.contains("bad bind address"));
-		assert!(parse_port("[::1]9000:80")
-			.unwrap_err()
-			.contains("IPv6 bind"));
+		assert!(
+			parse_port("99999:80")
+				.unwrap_err()
+				.contains("host port '99999'")
+		);
+		assert!(
+			parse_port("1.2.3.4.5:9000:80")
+				.unwrap_err()
+				.contains("bad bind address")
+		);
+		assert!(
+			parse_port("[::1]9000:80")
+				.unwrap_err()
+				.contains("IPv6 bind")
+		);
 	}
 
 	#[test]
@@ -254,6 +264,18 @@ mod tests {
 
 		let bound = parse_port("0.0.0.0:8080:80").unwrap();
 		assert_eq!(bound.to_port_string(), "0.0.0.0:8080:80");
+	}
+
+	#[test]
+	fn host_endpoint_omits_loopback_bind() {
+		let mapping = parse_port("9000:80").unwrap();
+		assert_eq!(mapping.host_endpoint(), "9000");
+
+		let bound = parse_port("0.0.0.0:8080:80").unwrap();
+		assert_eq!(bound.host_endpoint(), "0.0.0.0:8080");
+
+		let v6 = parse_port("[::1]:8081:81").unwrap();
+		assert_eq!(v6.host_endpoint(), "::1:8081");
 	}
 
 	#[test]
@@ -371,45 +393,57 @@ mod tests {
 	fn project_ports_rejects_bad_entries() {
 		let dir = tempfile::tempdir().unwrap();
 		let bad = write_json(dir.path(), "bad.json", r#"{"ports": ["9000"]}"#);
-		assert!(project_ports(&bad)
-			.unwrap_err()
-			.contains("expected HOST:GUEST"));
+		assert!(
+			project_ports(&bad)
+				.unwrap_err()
+				.contains("expected HOST:GUEST")
+		);
 
 		let bad_network = write_json(
 			dir.path(),
 			"badnetwork.json",
 			r#"{"network": {"ports": ["9000"]}}"#,
 		);
-		assert!(project_ports(&bad_network)
-			.unwrap_err()
-			.contains("expected HOST:GUEST"));
+		assert!(
+			project_ports(&bad_network)
+				.unwrap_err()
+				.contains("expected HOST:GUEST")
+		);
 
 		let not_list = write_json(dir.path(), "notlist.json", r#"{"ports": "9000:80"}"#);
-		assert!(project_ports(&not_list)
-			.unwrap_err()
-			.contains("\"ports\" must be a list of strings"));
+		assert!(
+			project_ports(&not_list)
+				.unwrap_err()
+				.contains("\"ports\" must be a list of strings")
+		);
 
 		let network_not_list = write_json(
 			dir.path(),
 			"networknotlist.json",
 			r#"{"network": {"ports": "9000:80"}}"#,
 		);
-		assert!(project_ports(&network_not_list)
-			.unwrap_err()
-			.contains("\"network.ports\" must be a list of strings"));
+		assert!(
+			project_ports(&network_not_list)
+				.unwrap_err()
+				.contains("\"network.ports\" must be a list of strings")
+		);
 
 		let mixed = write_json(dir.path(), "mixed.json", r#"{"ports": ["9000:80", 5]}"#);
-		assert!(project_ports(&mixed)
-			.unwrap_err()
-			.contains("\"ports\" must be a list of strings"));
+		assert!(
+			project_ports(&mixed)
+				.unwrap_err()
+				.contains("\"ports\" must be a list of strings")
+		);
 
 		let network_not_object = write_json(
 			dir.path(),
 			"networknotobject.json",
 			r#"{"network": "oops"}"#,
 		);
-		assert!(project_ports(&network_not_object)
-			.unwrap_err()
-			.contains("expected an object with a \"network\" object"));
+		assert!(
+			project_ports(&network_not_object)
+				.unwrap_err()
+				.contains("expected an object with a \"network\" object")
+		);
 	}
 }

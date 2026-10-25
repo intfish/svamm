@@ -6,9 +6,9 @@
 //! manifest deletion, garbage collection) used by `svamm setup` and
 //! `svamm prune`.
 
-use microsandbox::sandbox::Sandbox;
 use microsandbox::Image;
-use microsandbox_cli::commands::common::{apply_sandbox_opts, SandboxConfigSources};
+use microsandbox::sandbox::Sandbox;
+use microsandbox_cli::commands::common::{SandboxConfigSources, apply_sandbox_opts};
 
 use crate::assets;
 use crate::config::{self, Config};
@@ -53,12 +53,13 @@ pub async fn ensure_registry(config: &Config) -> anyhow::Result<()> {
 ///
 /// the registry sandbox may report as running before the registry process has
 /// finished booting. callers that push must not proceed until the registry
-/// accepts requests. the wait is bounded so a broken registry fails with a
-/// repair hint instead of hanging forever.
+/// accepts requests. the wait is bounded by `registry.ready_timeout_ms` so a
+/// broken registry fails with a repair hint instead of hanging forever.
 pub async fn wait_ready(config: &Config) -> anyhow::Result<()> {
 	let url = format!("http://127.0.0.1:{}/v2/", config.registry.host_port);
 	let agent = registry_http();
-	let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+	let timeout = std::time::Duration::from_millis(config.registry.ready_timeout_ms);
+	let deadline = tokio::time::Instant::now() + timeout;
 	loop {
 		if agent.get(&url).call().is_ok() {
 			return Ok(());
@@ -289,6 +290,48 @@ pub fn registry_tags_for(config: &Config, repository: &str) -> Vec<String> {
 		.unwrap_or_default()
 }
 
+/// the total stored size of a tagged image in the local registry, in bytes.
+///
+/// sums the manifest config blob and layer sizes. `None` when the manifest
+/// cannot be fetched (registry unreachable, unknown tag, or a manifest list
+/// whose size depends on platform).
+pub fn registry_manifest_size(config: &Config, repository: &str, tag: &str) -> Option<u64> {
+	let url = registry_v2_url_for(config, repository, &format!("manifests/{tag}"));
+	let agent = registry_http();
+	let Ok(response) = agent
+		.get(&url)
+		.header(
+			"Accept",
+			"application/vnd.docker.distribution.manifest.v2+json, \
+			 application/vnd.docker.distribution.manifest.list.v2+json, \
+			 application/vnd.oci.image.manifest.v1+json",
+		)
+		.call()
+	else {
+		return None;
+	};
+	let data: serde_json::Value = response.into_body().read_json().unwrap_or_default();
+	if data.get("manifests").is_some() {
+		return None;
+	}
+	let config_size = data
+		.get("config")
+		.and_then(|config| config.get("size"))
+		.and_then(|size| size.as_u64())
+		.unwrap_or(0);
+	let layers_size: u64 = data
+		.get("layers")
+		.and_then(|layers| layers.as_array())
+		.map(|layers| {
+			layers
+				.iter()
+				.filter_map(|layer| layer.get("size").and_then(|size| size.as_u64()))
+				.sum()
+		})
+		.unwrap_or(0);
+	Some(config_size + layers_size)
+}
+
 /// list tags of the `svamm` repository in the local registry.
 pub fn registry_tags(config: &Config) -> Vec<String> {
 	registry_tags_for(config, &config.registry.repo)
@@ -425,10 +468,10 @@ pub async fn cached_svamm_refs(config: &Config) -> anyhow::Result<Vec<(String, S
 	let mut refs = Vec::new();
 	for image in images {
 		let reference = image.reference().to_string();
-		if let Some(digest) = image.manifest_digest() {
-			if prefixes.iter().any(|prefix| reference.starts_with(prefix)) {
-				refs.push((reference, digest.to_string()));
-			}
+		if let Some(digest) = image.manifest_digest()
+			&& prefixes.iter().any(|prefix| reference.starts_with(prefix))
+		{
+			refs.push((reference, digest.to_string()));
 		}
 	}
 	Ok(refs)

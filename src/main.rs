@@ -35,6 +35,7 @@ async fn main() {
 		Some(Command::Create(args)) => app::create(&config, &args).await,
 		Some(Command::List(args)) => app::list(&config, &args).await,
 		Some(Command::Net(args)) => app::net(&args).await,
+		Some(Command::Mounts(args)) => app::mounts(&args).await,
 		Some(Command::Start(args)) => app::start(&config, &args).await,
 		Some(Command::Stop(args)) => app::stop(&args).await,
 		Some(Command::Restart(args)) => app::restart(&config, &args).await,

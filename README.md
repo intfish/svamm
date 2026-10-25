@@ -220,6 +220,7 @@ svamm image rm acme/agent:latest
 ```
 
 `svamm image build` prints the resulting reference. `svamm image ls` lists one row per `repo:tag`.
+The `SIZE` column shows the stored manifest size (config plus layers); a `-` means it could not be read.
 The `PULL` column shows the sandbox-facing pull uri `svamm.internal:<proxy_port>/<repo>:<tag>`.
 
 `svamm image rm <repo>:<tag>` deletes the image from the local registry and the msb cache.
@@ -267,6 +268,9 @@ custom setups:
 - the registry data mount carries a guest-write quota (default `32G`).
     - raise `SVAMM_REGISTRY_QUOTA` or set `registry.quota` in `~/.config/svamm/config.toml`
     - run `svamm setup` to apply it, the data already stored is kept.
+- commands that need the registry wait for it to answer for `registry.ready_timeout` milliseconds before failing (default `30000`).
+    - raise `SVAMM_REGISTRY_READY_TIMEOUT_MS` when the registry vm boots slowly on your machine
+    - the wait is bounded; a broken registry fails with the repair hint instead of hanging.
 
 svamm creates or starts the registry sandbox automatically when it is missing or stopped.
 svamm does this when you create, start, or run a sandbox, and when an image build, mirror, or ls needs to push or pull.

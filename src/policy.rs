@@ -2,8 +2,10 @@
 
 use console::style;
 use microsandbox_types::{
-	Action, Destination, DestinationGroup, Direction, NetworkPolicy, PortRange, Protocol, Rule,
+	Action, Destination, DestinationGroup, Direction, NetworkPolicy, PortRange, Protocol,
 };
+
+use crate::ui;
 
 /// render a network policy to a human-readable listing.
 pub fn render(policy: &NetworkPolicy) -> String {
@@ -20,23 +22,18 @@ pub fn render(policy: &NetworkPolicy) -> String {
 		"rules ({}):\n",
 		style(policy.rules.len().to_string()).cyan().bold()
 	));
-	for (index, rule) in policy.rules.iter().enumerate() {
-		output.push_str(&render_rule(index + 1, rule));
-		output.push('\n');
+	let mut table = ui::Table::new(&["ACTION", "DIRECTION", "DEST", "PROTOCOL", "PORT"]);
+	for rule in &policy.rules {
+		table.add_row(vec![
+			action(&rule.action),
+			direction(&rule.direction).to_string(),
+			dest(&rule.destination),
+			protos(&rule.protocols),
+			ports(&rule.ports),
+		]);
 	}
+	output.push_str(&table.render());
 	output
-}
-
-fn render_rule(index: usize, rule: &Rule) -> String {
-	let rendered_action = action(&rule.action);
-	let action = console::pad_str(&rendered_action, 5, console::Alignment::Left, None);
-	format!(
-		"  {index:>2}  {action} {:7} to {:28} ({}, port {})",
-		direction(&rule.direction),
-		dest(&rule.destination),
-		protos(&rule.protocols),
-		ports(&rule.ports),
-	)
 }
 
 fn action(action: &Action) -> String {
@@ -183,30 +180,23 @@ mod tests {
 		assert_eq!(lines[0], "default egress:  allow");
 		assert_eq!(lines[1], "default ingress: deny");
 		assert_eq!(lines[2], "rules (3):");
-		// format: `  {i:>2}  {action:<5} {direction:<7} to {dest:<28} ({protos}, port {ports})`.
+		// table format: aligned columns under matching headers.
 		assert_eq!(
-			lines[3],
-			format!("   1  allow egress  to {:<28} (tcp, port 50000)", "host")
+			lines[3].split_whitespace().collect::<Vec<_>>(),
+			vec!["ACTION", "DIRECTION", "DEST", "PROTOCOL", "PORT"]
 		);
 		assert_eq!(
-			lines[4],
-			format!(
-				"   2  allow egress  to {:<28} (tcp, port 443)",
-				"example.com"
-			)
+			lines[4].split_whitespace().collect::<Vec<_>>(),
+			vec!["allow", "egress", "host", "tcp", "50000"]
 		);
 		assert_eq!(
-			lines[5],
-			format!(
-				"   3  deny  egress  to {:<28} (any, port any)",
-				"*.tracking.com"
-			)
+			lines[5].split_whitespace().collect::<Vec<_>>(),
+			vec!["allow", "egress", "example.com", "tcp", "443"]
 		);
-		let plain = lines.join("\n");
-		assert!(plain.contains("allow egress  to host"));
-		assert!(plain.contains("deny  egress  to *.tracking.com"));
-		assert!(plain.contains("(tcp, port 50000)"));
-		assert!(plain.contains("(any, port any)"));
+		assert_eq!(
+			lines[6].split_whitespace().collect::<Vec<_>>(),
+			vec!["deny", "egress", "*.tracking.com", "any", "any"]
+		);
 	}
 
 	#[test]

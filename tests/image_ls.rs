@@ -18,9 +18,15 @@ async fn image_ls_lists_all_repositories_and_tags_with_pull_uri() {
 	]);
 
 	let stdout = env.run_ok(false, &["image", "ls"]);
-	for header in ["REPOSITORY", "TAG", "PULL"] {
+	for header in ["REPOSITORY", "TAG", "SIZE", "PULL"] {
 		assert!(stdout.contains(header), "missing {header} header: {stdout}");
 	}
+	// the fake serves a fixed 2048-byte manifest for every tag.
+	assert_eq!(
+		stdout.matches("2 KB").count(),
+		3,
+		"every image must carry a size: {stdout}"
+	);
 	// the pull uri is the sandbox-facing one through the read-only proxy.
 	for expected in [
 		&format!("svamm.internal:{}/svamm:latest", env.proxy_port),
@@ -121,8 +127,8 @@ async fn image_ls_only_empty_repositories_reports_note() {
 #[tokio::test]
 async fn image_ls_registry_down_warns_with_hint() {
 	// no fake server. the catalog query fails. the best-effort bring-up
-	// finds the seeded registry sandbox running, retries, and warns instead
-	// of hanging or erroring.
+	// finds the seeded registry sandbox running, waits the bounded readiness
+	// timeout (shrunk by the harness), then warns instead of hanging.
 	let env = TestEnv::new();
 	env.init_db().await;
 	env.seed_registry().await;
@@ -135,6 +141,29 @@ async fn image_ls_registry_down_warns_with_hint() {
 	assert!(
 		stdout.contains("svamm setup"),
 		"expected repair hint; got: {stdout}"
+	);
+}
+
+#[tokio::test]
+async fn image_ls_waits_for_late_registry() {
+	// the fake answers 500 for the first three requests, then serves
+	// normally. the first catalog probe fails; `svamm image ls` must wait
+	// for readiness instead of giving up after one retry. the seeded "Running"
+	// sandbox keeps the bring-up a no-op. three failures guarantee the probe
+	// and the wait both land on errors before the server recovers.
+	let mut env = TestEnv::new();
+	env.init_db().await;
+	env.seed_registry().await;
+	env.start_slow_catalog_registry(&[("svamm", &[("latest", "sha256:a")])], 3);
+
+	let stdout = env.run_ok(false, &["image", "ls"]);
+	assert!(
+		stdout.contains(&format!("svamm.internal:{}/svamm:latest", env.proxy_port)),
+		"late registry must still be listed; got: {stdout}"
+	);
+	assert!(
+		!stdout.contains("not reachable"),
+		"no unreachable warning expected once the registry answers; got: {stdout}"
 	);
 }
 

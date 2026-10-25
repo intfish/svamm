@@ -1,5 +1,5 @@
-use microsandbox::sandbox::{Sandbox, SandboxConfig, SandboxHandle, SandboxStatus};
 use microsandbox::Image;
+use microsandbox::sandbox::{Sandbox, SandboxConfig, SandboxHandle, SandboxStatus};
 use microsandbox_cli::commands::common::apply_sandbox_opts;
 use microsandbox_image::{
 	GlobalCache, Platform, PullOptions, Reference, Registry, RootfsMaterialization,
@@ -9,8 +9,8 @@ use crate::assets;
 use crate::cli;
 use crate::config::{self, Config, VERSION};
 use crate::mounts::{
-	abs_path, check_mount_conflicts, mount_kind, mount_spec, project_config, project_mount_spec,
-	project_mounts, MountSpec,
+	MountSpec, abs_path, check_mount_conflicts, mount_kind, mount_spec, project_config,
+	project_mount_spec, project_mounts,
 };
 use crate::paths;
 use crate::ports;
@@ -192,11 +192,11 @@ pub async fn create(config: &Config, args: &cli::CreateCli) -> anyhow::Result<()
 
 	// merge project-declared mounts with the `--rw`/`--ro` flags.
 	// destination conflicts are rejected below.
-	if let Some(project) = project.as_deref() {
-		if let Some(mounts) = project_mounts(project).map_err(anyhow::Error::msg)? {
-			for mount in mounts {
-				specs.push(project_mount_spec(&mount, &quota, &config.agent.home));
-			}
+	if let Some(project) = project.as_deref()
+		&& let Some(mounts) = project_mounts(project).map_err(anyhow::Error::msg)?
+	{
+		for mount in mounts {
+			specs.push(project_mount_spec(&mount, &quota, &config.agent.home));
 		}
 	}
 	let sandbox_image_ref = project::resolve_sandbox_image_ref(config, project.as_deref())?;
@@ -252,13 +252,13 @@ pub async fn create(config: &Config, args: &cli::CreateCli) -> anyhow::Result<()
 	let merged_rules = project::merge_net_rules(config, project.as_deref())?;
 
 	let mut port_specs: Vec<String> = Vec::new();
-	if let Some(project) = project.as_deref() {
-		if let Some(mappings) = ports::project_ports(project).map_err(anyhow::Error::msg)? {
-			port_specs = mappings
-				.iter()
-				.map(|mapping| mapping.to_port_string())
-				.collect();
-		}
+	if let Some(project) = project.as_deref()
+		&& let Some(mappings) = ports::project_ports(project).map_err(anyhow::Error::msg)?
+	{
+		port_specs = mappings
+			.iter()
+			.map(|mapping| mapping.to_port_string())
+			.collect();
 	}
 
 	let env = project::desired_env(config, project.as_deref()).map_err(anyhow::Error::msg)?;
@@ -508,15 +508,130 @@ pub async fn net(args: &cli::NetCli) -> anyhow::Result<()> {
 	}
 	if !ports.is_empty() {
 		println!("published ports ({}):", ports.len());
-		for (index, mapping) in ports.iter().enumerate() {
-			println!("  {:>2}  {}", index + 1, mapping.to_port_string());
+		let mut table = ui::Table::new(&["HOST", "GUEST", "PROTOCOL"]);
+		for mapping in &ports {
+			table.add_row(vec![
+				mapping.host_endpoint(),
+				mapping.guest_port.to_string(),
+				if mapping.udp { "udp" } else { "tcp" }.to_string(),
+			]);
 		}
+		table.print();
 		shown = true;
 	}
 	if !shown {
 		ui::warn_note(format!("sandbox {} has no network policy", args.name));
 	}
 	Ok(())
+}
+
+/// `svamm mounts` - list a sandbox's mounts.
+pub async fn mounts(args: &cli::MountsCli) -> anyhow::Result<()> {
+	require_slug(&args.name).map_err(anyhow::Error::msg)?;
+	let handle = find_sandbox_or_err(&args.name).await?;
+	let config = handle
+		.config()
+		.map_err(|err| anyhow::anyhow!("failed to parse sandbox config: {err}"))?;
+	let mounts = &config.spec.mounts;
+	if mounts.is_empty() {
+		ui::warn_note(format!("sandbox {} has no mounts", args.name));
+		return Ok(());
+	}
+	println!("mounts ({}):", mounts.len());
+	let mut table = ui::Table::new(&["SOURCE", "DEST", "MODE", "LIMIT"]);
+	for mount in mounts {
+		table.add_row(mount_cells(mount));
+	}
+	table.print();
+	Ok(())
+}
+
+/// the table cells for a mount in `svamm mounts`.
+fn mount_cells(mount: &microsandbox_types::VolumeMount) -> Vec<String> {
+	match mount {
+		microsandbox_types::VolumeMount::Bind {
+			host,
+			guest,
+			options,
+			quota_mib,
+			..
+		} => vec![
+			host.display().to_string(),
+			guest.clone(),
+			mount_mode(options).to_string(),
+			quota_mib
+				.map(format_mem_mib)
+				.unwrap_or_else(|| "-".to_string()),
+		],
+		microsandbox_types::VolumeMount::Tmpfs {
+			guest,
+			size_mib,
+			options,
+		} => vec![
+			"[tmpfs]".to_string(),
+			guest.clone(),
+			mount_mode(options).to_string(),
+			size_mib
+				.map(format_mem_mib)
+				.unwrap_or_else(|| "-".to_string()),
+		],
+		microsandbox_types::VolumeMount::Owned {
+			guest,
+			storage,
+			options,
+			..
+		} => {
+			let limit = match storage {
+				microsandbox_types::OwnedVolumeStorage::Directory { quota_mib } => quota_mib
+					.map(format_mem_mib)
+					.unwrap_or_else(|| "-".to_string()),
+				microsandbox_types::OwnedVolumeStorage::Disk { capacity_mib } => {
+					format_mem_mib(*capacity_mib)
+				}
+			};
+			vec![
+				"[owned]".to_string(),
+				guest.clone(),
+				mount_mode(options).to_string(),
+				limit,
+			]
+		}
+		microsandbox_types::VolumeMount::Named {
+			name,
+			guest,
+			create,
+			options,
+			..
+		} => {
+			let limit = create
+				.as_ref()
+				.and_then(|create| create.quota_mib.or(create.capacity_mib))
+				.map(format_mem_mib)
+				.unwrap_or_else(|| "-".to_string());
+			vec![
+				format!("[volume {name}]"),
+				guest.clone(),
+				mount_mode(options).to_string(),
+				limit,
+			]
+		}
+		microsandbox_types::VolumeMount::DiskImage {
+			host,
+			guest,
+			options,
+			..
+		} => vec![
+			host.display().to_string(),
+			guest.clone(),
+			mount_mode(options).to_string(),
+			"-".to_string(),
+		],
+	}
+}
+
+/// the rw/ro mode of a mount.
+fn mount_mode(options: &microsandbox_types::MountOptions) -> &'static str {
+	if options.readonly { "ro" } else { "rw" }
 }
 
 /// `svamm start` - start a sandbox.
@@ -605,10 +720,10 @@ pub async fn rm(args: &cli::RmCli) -> anyhow::Result<()> {
 		println!("rm {}", args.name);
 		return Ok(());
 	}
-	if sandbox_running(&args.name).await? {
-		if let Some(handle) = find_sandbox(&args.name).await? {
-			handle.stop().await?;
-		}
+	if sandbox_running(&args.name).await?
+		&& let Some(handle) = find_sandbox(&args.name).await?
+	{
+		handle.stop().await?;
 	}
 	Sandbox::remove(&args.name).await?;
 	crate::state::remove(&args.name)?;

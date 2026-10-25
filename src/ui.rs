@@ -272,25 +272,29 @@ mod tests {
 	#[test]
 	fn pull_progress_skips_byte_level_events() {
 		let reference = "ghcr.io/acme/vm:9";
-		assert!(pull_progress_line(
-			reference,
-			&microsandbox_image::PullProgress::LayerDownloadProgress {
-				layer_index: 0,
-				digest: "sha256:abc".into(),
-				downloaded_bytes: 1,
-				total_bytes: Some(100),
-			}
-		)
-		.is_none());
-		assert!(pull_progress_line(
-			reference,
-			&microsandbox_image::PullProgress::LayerMaterializeProgress {
-				layer_index: 0,
-				bytes_read: 1,
-				total_bytes: 100,
-			}
-		)
-		.is_none());
+		assert!(
+			pull_progress_line(
+				reference,
+				&microsandbox_image::PullProgress::LayerDownloadProgress {
+					layer_index: 0,
+					digest: "sha256:abc".into(),
+					downloaded_bytes: 1,
+					total_bytes: Some(100),
+				}
+			)
+			.is_none()
+		);
+		assert!(
+			pull_progress_line(
+				reference,
+				&microsandbox_image::PullProgress::LayerMaterializeProgress {
+					layer_index: 0,
+					bytes_read: 1,
+					total_bytes: 100,
+				}
+			)
+			.is_none()
+		);
 	}
 
 	#[test]

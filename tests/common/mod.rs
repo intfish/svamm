@@ -123,6 +123,9 @@ impl TestEnv {
 			.env("MSB_HOME", self.msb_home())
 			.env("SVAMM_REGISTRY_PORT", self.port.to_string())
 			.env("SVAMM_REGISTRY_PROXY_PORT", self.proxy_port.to_string())
+			// a dead registry endpoint would otherwise make a readiness wait
+			// burn the full 30s production bound. tests never wait that long.
+			.env("SVAMM_REGISTRY_READY_TIMEOUT_MS", "1000")
 			.env("HOME", self.dir.path().join("home"));
 		if dry_run {
 			command.env("SVAMM_DRY_RUN", "1");
@@ -291,6 +294,25 @@ impl TestEnv {
 		&mut self,
 		repos: &[(&str, &[(&str, &str)])],
 	) -> std::sync::Arc<FakeRegistry> {
+		self.start_catalog_registry_with_budget(repos, 0)
+	}
+
+	/// start a fake docker-registry server that answers the first `fail_first`
+	/// requests with 500 before serving normally, simulating a registry that
+	/// is still booting.
+	pub fn start_slow_catalog_registry(
+		&mut self,
+		repos: &[(&str, &[(&str, &str)])],
+		fail_first: usize,
+	) -> std::sync::Arc<FakeRegistry> {
+		self.start_catalog_registry_with_budget(repos, fail_first)
+	}
+
+	fn start_catalog_registry_with_budget(
+		&mut self,
+		repos: &[(&str, &[(&str, &str)])],
+		fail_first: usize,
+	) -> std::sync::Arc<FakeRegistry> {
 		let map = std::sync::Arc::new(std::sync::Mutex::new(
 			repos
 				.iter()
@@ -306,12 +328,14 @@ impl TestEnv {
 				),
 		));
 		let deleted = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+		let budget = std::sync::Arc::new(std::sync::Mutex::new(fail_first));
 		let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
 		let port = listener.local_addr().unwrap().port();
 		let handle = {
 			let map = map.clone();
 			let deleted = deleted.clone();
-			std::thread::spawn(move || serve_registry(listener, map, deleted))
+			let budget = budget.clone();
+			std::thread::spawn(move || serve_registry(listener, map, deleted, budget))
 		};
 		self.port = port;
 		std::sync::Arc::new(FakeRegistry {
@@ -337,6 +361,7 @@ fn serve_registry(
 		>,
 	>,
 	deleted: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+	budget: std::sync::Arc<std::sync::Mutex<usize>>,
 ) {
 	/// the repository part of a `/v2/<repo>/<verb>/...` path.
 	fn repo_of(path: &str, verb: &str) -> Option<String> {
@@ -349,6 +374,27 @@ fn serve_registry(
 		let Some(request) = read_request(&mut stream) else {
 			continue;
 		};
+		// a nonzero budget simulates a registry that is not ready yet.
+		let failing = {
+			let mut remaining = budget.lock().unwrap();
+			if *remaining > 0 {
+				*remaining -= 1;
+				true
+			} else {
+				false
+			}
+		};
+		if failing {
+			write_response(
+				&mut stream,
+				&HttpResponse {
+					status: 500,
+					headers: vec![],
+					body: None,
+				},
+			);
+			continue;
+		}
 		let path = request.path.clone();
 		let response = match (request.method.as_str(), path.as_str()) {
 			("GET", "/v2/") => HttpResponse {
@@ -380,6 +426,42 @@ fn serve_registry(
 						status: 200,
 						headers: vec![("Content-Type".to_string(), "application/json".to_string())],
 						body: Some(body.into_bytes()),
+					}
+				}
+			}
+			("GET", p) if let Some(repo) = repo_of(p, "/manifests/") => {
+				let tag = &p[p.rfind("/manifests/").unwrap() + "/manifests/".len()..];
+				let known = repos
+					.lock()
+					.unwrap()
+					.get(&repo)
+					.is_some_and(|tags| tags.contains_key(tag));
+				if !known {
+					HttpResponse::not_found()
+				} else {
+					// a fixed two-kilobyte layer so `image ls` size tests have
+					// a deterministic value to assert against.
+					let manifest = serde_json::json!({
+						"schemaVersion": 2,
+						"mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+						"config": {
+							"mediaType": "application/vnd.docker.container.image.v1+json",
+							"size": 0,
+							"digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+						},
+						"layers": [{
+							"mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
+							"size": 2048,
+							"digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+						}]
+					});
+					HttpResponse {
+						status: 200,
+						headers: vec![(
+							"Content-Type".to_string(),
+							"application/vnd.docker.distribution.manifest.v2+json".to_string(),
+						)],
+						body: Some(serde_json::to_vec(&manifest).unwrap()),
 					}
 				}
 			}

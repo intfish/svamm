@@ -1682,9 +1682,9 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
 name = "granit-parser"
-version = "1.2.1"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48aa83cc6ac4dc610adf5501a5392b4bcc543b2c1f24eaf77469a96e31ec9abe"
+checksum = "da55feca5d1625466bae068f9fd4b87892caeae70c3fe671ddb0f50d41aebf37"
 dependencies = [
  "arraydeque",
  "smallvec",
@@ -2506,6 +2506,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lru"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a9f71e3591c7ec44d3e563e87bf14ddc2bada8519dca046e5b0e560cd004e2d"
+dependencies = [
+ "hashbrown 0.17.1",
+]
+
+[[package]]
 name = "lru-slab"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2579,9 +2588,9 @@ dependencies = [
 
 [[package]]
 name = "microsandbox"
-version = "0.7.9"
+version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c84ee01eee4b5c808253299823254a2ee39b5bb1059ae5672a3ebfb0a7ae622"
+checksum = "1f7eeda1df06e0ad57656850810d5c564601039f6cfb2b00d8e03958c857862e"
 dependencies = [
  "astral-tokio-tar",
  "async-compression",
@@ -2640,9 +2649,9 @@ dependencies = [
 
 [[package]]
 name = "microsandbox-agent-client"
-version = "0.7.9"
+version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcaded0a2dcadc8cc53eab36bbde5e66e17b2930a49bfa392315523f1e5aa50f"
+checksum = "6433fed6d8ac4e7356e6c70fc72b2bdef6cf49e339972330acae9e0012a223f8"
 dependencies = [
  "bytes",
  "ciborium",
@@ -2661,9 +2670,9 @@ dependencies = [
 
 [[package]]
 name = "microsandbox-cli"
-version = "0.7.9"
+version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb55e4e53b76e3afb344c2aed30eca4b5c0ed8795caecfee6de20bfea481a6ee"
+checksum = "6a31c7af92945962d068668a9c1a0d00e47d587c079ea6962cfbcca0c5fcb159"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -2708,9 +2717,9 @@ dependencies = [
 
 [[package]]
 name = "microsandbox-control-client"
-version = "0.7.9"
+version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91f7a73b88b92e97b1302afbed62b14c2890b5ea9fe70f43b169932d2702c0b1"
+checksum = "b54fc3f5d564f338befe2eb8b4d89cfd7cc652ec293770fdb84034c1942aef77"
 dependencies = [
  "microsandbox-protocol",
  "microsandbox-protocol-client",
@@ -2725,9 +2734,9 @@ dependencies = [
 
 [[package]]
 name = "microsandbox-db"
-version = "0.7.9"
+version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcbab3a3f2bb12cae1173808a08451cb5784da7e5f1dca0913114828379068c1"
+checksum = "1e099e9bd5173bb22447d0e573d07d626f00516ddde88badba51dbb53dcfb7ff"
 dependencies = [
  "async-trait",
  "microsandbox-types",
@@ -2741,9 +2750,9 @@ dependencies = [
 
 [[package]]
 name = "microsandbox-filesystem"
-version = "0.7.9"
+version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e55d6c19c00835e5f850a381642f96d1ddd9d574802a61a17e4b45c746bceea"
+checksum = "9ee78baab9aeba002cb094fe0155ce69aadc0ef8a7046b66396d12b2d8520248"
 dependencies = [
  "bincode",
  "crossbeam-channel",
@@ -2763,9 +2772,9 @@ dependencies = [
 
 [[package]]
 name = "microsandbox-image"
-version = "0.7.9"
+version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d982f8f13d343fea617b3a9e25f408f3dbc2099d2074a574782dfe8212e4560"
+checksum = "b37ff469ea2f6a20ad3153d91dc46f1775941317b6d6ed228e9d1158b06f9685"
 dependencies = [
  "astral-tokio-tar",
  "async-compression",
@@ -2782,6 +2791,7 @@ dependencies = [
  "oci-spec",
  "rand 0.10.2",
  "rustls-pki-types",
+ "scc",
  "scopeguard",
  "serde",
  "serde_json",
@@ -2795,9 +2805,9 @@ dependencies = [
 
 [[package]]
 name = "microsandbox-metrics"
-version = "0.7.9"
+version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26f3768c30f767f12d48b093afad3cd5261ad916b7cff98eb8488bc195549185"
+checksum = "0be1156a2ab674cc4d7375cd03cf84de8b706b50c190e57488f82d6e46a69061"
 dependencies = [
  "chrono",
  "libc",
@@ -2807,9 +2817,9 @@ dependencies = [
 
 [[package]]
 name = "microsandbox-migration"
-version = "0.7.9"
+version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2852199db97944c703f676ef6c1916290281932bbb77b827b9c7ba81b995985"
+checksum = "0440779070db3805ccc092c7f1ea0839402e009a054ed14b47a0b857643507a9"
 dependencies = [
  "microsandbox-db",
  "sea-orm-migration",
@@ -2818,9 +2828,9 @@ dependencies = [
 
 [[package]]
 name = "microsandbox-network"
-version = "0.7.9"
+version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "706285328aa23679ec5c3b6bb9046d65f7f1a090bdbc4364292c39f05184902b"
+checksum = "97e9a1c88020f516269dda39647bf239b6b43bee3ed36fb1b3dc1d68a7261bb6"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -2833,7 +2843,7 @@ dependencies = [
  "httparse",
  "ipnetwork",
  "libc",
- "lru",
+ "lru 0.19.0",
  "microsandbox-protocol",
  "microsandbox-types",
  "microsandbox-utils",
@@ -2864,9 +2874,9 @@ dependencies = [
 
 [[package]]
 name = "microsandbox-protocol"
-version = "0.7.9"
+version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b08636032de43e7d1309819c33fd5d28c4569c646b4de7414db100f086ea1de3"
+checksum = "5ca0edc07b1b11a08d59eef7aa91f746cd2ca26280c6e33c5d78c6a570e12f50"
 dependencies = [
  "bytes",
  "chrono",
@@ -2882,9 +2892,9 @@ dependencies = [
 
 [[package]]
 name = "microsandbox-protocol-client"
-version = "0.7.9"
+version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1aa7616cd5381130cb377559adcb4685f4b3fdea9e9d19bf6ecb02bd88472a5"
+checksum = "6eeb830ab228c90d427387e57d54ceddc1666b86aef526c7029578fba2d9d4cd"
 dependencies = [
  "microsandbox-protocol",
  "serde",
@@ -2895,9 +2905,9 @@ dependencies = [
 
 [[package]]
 name = "microsandbox-runtime"
-version = "0.7.9"
+version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59aa2eb3cca712d407f67cca18b227ce5cd26759baae3d70d324503bbfa522f3"
+checksum = "462a1fc0c05b3c76a6b4724051cb2e654a071f77eb0fb8c9af2b47a0b435965d"
 dependencies = [
  "base64 0.23.1",
  "bytes",
@@ -2937,9 +2947,9 @@ dependencies = [
 
 [[package]]
 name = "microsandbox-types"
-version = "0.7.9"
+version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "120de71eb7af0895545fb802ca73731ddc38ee959a4d9b97fbb39c97660f3348"
+checksum = "a418b580e1bd4cc4438349b2b1d7a6f36ecf2168ba749ca547efe470baeb388a"
 dependencies = [
  "chrono",
  "hex",
@@ -2955,9 +2965,9 @@ dependencies = [
 
 [[package]]
 name = "microsandbox-types-macros"
-version = "0.7.9"
+version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fe123c68e2e9ed36984326c7010d21080f1bebc5b7abc458381ead3f5c5a48f"
+checksum = "e6cbf91b8738ee0fd7e85b28c4f0005b391fd907adf9378b408e37b02a67857d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2966,9 +2976,9 @@ dependencies = [
 
 [[package]]
 name = "microsandbox-utils"
-version = "0.7.9"
+version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "878150a4eae162b390320e7d8cdb30ba03ef8db3d073259646ee36a261237eab"
+checksum = "9fde88f2c9b5ce2282237c3db5d980381049af9960c7ba2d6fd21afd60dd8877"
 dependencies = [
  "dirs",
  "libc",
@@ -2980,9 +2990,9 @@ dependencies = [
 
 [[package]]
 name = "microsandbox-vsock"
-version = "0.7.9"
+version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b7ab10a9d6c4e9c89a8b3f7d564d0184662cb392d01eaf799c8372822e2ef7c"
+checksum = "d0629253bfa372eb9fa4398aec76f5ca684a258cebc25a9ba9ca9a7840507cc5"
 dependencies = [
  "libc",
  "msb_krun",
@@ -3132,7 +3142,7 @@ dependencies = [
  "libc",
  "libloading",
  "log",
- "lru",
+ "lru 0.18.4",
  "msb-imago",
  "msb-vm-memory",
  "msb_krun_arch",
@@ -4193,12 +4203,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
+name = "saa"
+version = "5.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd85992a680de788217d9c70b74aa7685b108cf1aba02f728fb27f1b27199ad1"
+
+[[package]]
 name = "same-file"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "scc"
+version = "3.8.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d5f8ca67c4f6208caf824037a6a9df0211b4e0937fccc4f543441f294d04511"
+dependencies = [
+ "saa",
+ "sdd",
 ]
 
 [[package]]
@@ -4215,6 +4241,15 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
+
+[[package]]
+name = "sdd"
+version = "4.8.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a31877eee03686b905845993b5d9809a220c9dd5a10e9d6021d7ca67384c9070"
+dependencies = [
+ "saa",
+]
 
 [[package]]
 name = "sea-bae"
@@ -4429,9 +4464,9 @@ dependencies = [
 
 [[package]]
 name = "serde-saphyr"
-version = "1.2.0"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3afb591f9cdb6223c88ba39269aff895620c7f0716dc42b705b5733d5c7c0823"
+checksum = "a253edfdea34032da21af84e16fcc94f4c7a6ba237f9f3bc2dbf43cea8535c44"
 dependencies = [
  "annotate-snippets",
  "encoding_rs_io",
@@ -4913,7 +4948,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "svamm"
-version = "1.3.0"
+version = "1.3.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -5136,9 +5171,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.53.1"
+version = "1.54.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "202caea871b69668250d242070849eb495be178ed697a3e98aebce5bc81a0bed"
+checksum = "b52fd3255258d26fac7264ab5a76b53c13367136dc011d3d6ad4f8ed070396a3"
 dependencies = [
  "bytes",
  "libc",

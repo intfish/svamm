@@ -179,6 +179,10 @@ file read-only instead, so guests can read it.
     - `dest` - guest destination (optional); defaults to `/home/agent/<basename>`
     - the `rw` entries get the same guest-write quota as flag-provided mounts
     - removing the `mounts` object (or setting it to `[]`) drops the previously applied mounts
+- all svamm bind mounts use microsandbox `stat-virt=strict` and `host-perms=private`:
+    - a guest `chmod` or `chown` updates only the guest metadata overlay; the host inode keeps its created mode (`0600` for files, `0700` for dirs)
+    - a guest-created symlink is stored on the host as a regular file containing the target path
+    - svamm offers no per-mount switch for this policy
 - `network.allow` and `network.deny` add project net rules to the sandbox policy
 - `network.ports` (or top-level `ports`) publishes ports
 - `envs` object sets guest environment variables

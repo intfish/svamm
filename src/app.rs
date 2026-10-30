@@ -49,12 +49,6 @@ pub async fn setup(config: &Config) -> anyhow::Result<()> {
 	assets::ensure_default_configs(config);
 	write_config_file(config)?;
 
-	ui::step("checking host prerequisites");
-	let backend = microsandbox::backend::default_backend();
-	if backend.as_local().is_none() {
-		anyhow::bail!("svamm requires a local microsandbox backend");
-	}
-
 	let sdk_config = microsandbox::config::load_persisted_config_or_default()
 		.map_err(|err| anyhow::anyhow!("failed to read microsandbox config: {err}"))?;
 	if !microsandbox::setup::is_runtime_installed(&sdk_config) {
@@ -66,6 +60,13 @@ pub async fn setup(config: &Config) -> anyhow::Result<()> {
 		.await
 		.map_err(|err| anyhow::anyhow!("failed to install microsandbox runtime: {err}"))?;
 	}
+
+	ui::step("checking host prerequisites");
+	let backend = microsandbox::backend::default_backend();
+	if backend.as_local().is_none() {
+		anyhow::bail!("svamm requires a local microsandbox backend");
+	}
+	require_healthy_host()?;
 
 	ui::step("ensure local registry configuration");
 	registry::ensure_registry_config(config)?;
@@ -117,6 +118,34 @@ pub async fn setup(config: &Config) -> anyhow::Result<()> {
 
 	ui::ok(format!("setup complete (svamm {VERSION})"));
 	Ok(())
+}
+
+/// fail setup when the host cannot run local sandboxes.
+///
+/// mirrors `msb doctor`; the rendered problems include the copy-pasteable fix
+/// commands, so the user can repair the host before retrying.
+fn require_healthy_host() -> anyhow::Result<()> {
+	let diagnosis = microsandbox::setup::diagnose();
+	if diagnosis.is_healthy() {
+		return Ok(());
+	}
+	for problem in &diagnosis.problems {
+		eprintln!("{} {}", ui::style_error(), problem.headline);
+		for hint in &problem.hints {
+			eprintln!("  -> {hint}");
+		}
+		if let Some(fix) = &problem.fix {
+			eprintln!("  -> fix: {}", fix.description);
+			for command in &fix.commands {
+				eprintln!("  ->   {}", command.display());
+			}
+			if fix.requires_relogin {
+				eprintln!("  -> log out and back in before retrying");
+			}
+		}
+	}
+	eprintln!("  -> apply automatically: msb doctor --fix");
+	anyhow::bail!("host prerequisites not met; fix the problems above, then retry `svamm setup`")
 }
 
 /// bring up the local registry best-effort.

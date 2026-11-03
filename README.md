@@ -221,6 +221,9 @@ svamm image ls
 
 # remove an image from the local registry and the msb cache
 svamm image rm acme/agent:latest
+
+# reclaim registry disk taken by deleted images (on demand)
+svamm image gc
 ```
 
 `svamm image build` prints the resulting reference. `svamm image ls` lists one row per `repo:tag`.
@@ -229,6 +232,11 @@ The `PULL` column shows the sandbox-facing pull uri `svamm.internal:<proxy_port>
 
 `svamm image rm <repo>:<tag>` deletes the image from the local registry and the msb cache.
 If an existing sandbox still references the image, svamm removes nothing and names the sandboxes that use it.
+Deletion removes the manifest and tags but leaves the blobs on disk; `svamm image gc` reclaims that space.
+svamm never garbage-collects automatically: the registry caches manifest existence, and running
+garbage-collect while it serves requests makes a later re-push of the same image recreate the tag
+without the content. `svamm image gc` runs the collection and restarts the registry sandbox itself,
+because the restart is what clears that cache.
 
 To configure the image globally:
 

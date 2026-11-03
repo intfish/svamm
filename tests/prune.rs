@@ -195,8 +195,8 @@ fn prune_dry_run_previews_without_deleting() {
 		"dry-run must preview cache removal; got:\n{stdout}"
 	);
 	assert!(
-		stdout.contains("would garbage-collect the local registry"),
-		"dry-run must preview garbage collection; got:\n{stdout}"
+		!stdout.contains("garbage-collect"),
+		"dry-run must no longer plan automatic gc; got:\n{stdout}"
 	);
 
 	// nothing was actually deleted.

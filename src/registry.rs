@@ -7,7 +7,7 @@
 //! `svamm prune`.
 
 use microsandbox::Image;
-use microsandbox::sandbox::Sandbox;
+use microsandbox::sandbox::{RestartOptions, Sandbox};
 use microsandbox_cli::commands::common::{SandboxConfigSources, apply_sandbox_opts};
 
 use crate::assets;
@@ -290,6 +290,16 @@ pub fn registry_tags_for(config: &Config, repository: &str) -> Vec<String> {
 		.unwrap_or_default()
 }
 
+/// the manifest media types svamm accepts from the local registry.
+///
+/// docker/distribution serves a stored manifest only when the request accept
+/// header lists its media type. modern docker pushes OCI manifests and
+/// indexes, so the full supported set must be advertised.
+const MANIFEST_ACCEPT: &str = "application/vnd.docker.distribution.manifest.v2+json, \
+	application/vnd.docker.distribution.manifest.list.v2+json, \
+	application/vnd.oci.image.manifest.v1+json, \
+	application/vnd.oci.image.index.v1+json";
+
 /// the total stored size of a tagged image in the local registry, in bytes.
 ///
 /// sums the manifest config blob and layer sizes. `None` when the manifest
@@ -298,16 +308,7 @@ pub fn registry_tags_for(config: &Config, repository: &str) -> Vec<String> {
 pub fn registry_manifest_size(config: &Config, repository: &str, tag: &str) -> Option<u64> {
 	let url = registry_v2_url_for(config, repository, &format!("manifests/{tag}"));
 	let agent = registry_http();
-	let Ok(response) = agent
-		.get(&url)
-		.header(
-			"Accept",
-			"application/vnd.docker.distribution.manifest.v2+json, \
-			 application/vnd.docker.distribution.manifest.list.v2+json, \
-			 application/vnd.oci.image.manifest.v1+json",
-		)
-		.call()
-	else {
+	let Ok(response) = agent.get(&url).header("Accept", MANIFEST_ACCEPT).call() else {
 		return None;
 	};
 	let data: serde_json::Value = response.into_body().read_json().unwrap_or_default();
@@ -346,14 +347,7 @@ pub fn registry_tag_digest(config: &Config, tag: &str) -> Option<String> {
 pub fn registry_tag_digest_for(config: &Config, repository: &str, tag: &str) -> Option<String> {
 	let url = registry_v2_url_for(config, repository, &format!("manifests/{tag}"));
 	let agent = registry_http();
-	let Ok(response) = agent
-		.head(&url)
-		.header(
-			"Accept",
-			"application/vnd.docker.distribution.manifest.v2+json",
-		)
-		.call()
-	else {
+	let Ok(response) = agent.head(&url).header("Accept", MANIFEST_ACCEPT).call() else {
 		return None;
 	};
 	response
@@ -375,8 +369,57 @@ pub fn registry_delete_digest_for(config: &Config, repository: &str, digest: &st
 	agent.delete(&url).call().is_ok()
 }
 
-/// run registry garbage collection inside the registry sandbox.
+/// `repo:tag` entries whose manifest cannot be read back from the local registry.
+///
+/// distribution's garbage-collect marks a repository's blobs only when it can
+/// decode that repository's manifests. a manifest it cannot read is treated as
+/// an unreferenced blob and deleted while its tag link survives, silently
+/// destroying the image. a tag that `tags/list` reports but that fails to
+/// resolve is exactly that state.
+fn unreadable_manifest_tags(config: &Config) -> Vec<String> {
+	let mut broken = Vec::new();
+	let Some(repositories) = registry_catalog(config) else {
+		return broken;
+	};
+	for repository in repositories {
+		for tag in registry_tags_for(config, &repository) {
+			if registry_tag_digest_for(config, &repository, &tag).is_none() {
+				broken.push(format!("{repository}:{tag}"));
+			}
+		}
+	}
+	broken
+}
+
+/// run registry garbage collection inside the registry sandbox, then restart
+/// the sandbox.
+///
+/// distribution's gc is unsafe to run while the registry serves requests:
+/// the running process caches manifest blobs as present, so re-pushing a
+/// gc'd image recreates the tag link without re-storing the content
+/// (`MANIFEST_UNKNOWN` until a restart clears the cache). the restart is
+/// therefore part of gc, not an afterthought. it forces termination to avoid
+/// the graceful-stop drain hang and runs detached so the registry outlives
+/// this process.
+///
+/// garbage-collect skips when any tag is unreadable: distribution would
+/// delete that image's blobs as unreferenced. warn and stop so the user can
+/// heal the registry before it loses data. nothing was deleted, so no
+/// restart happens.
 pub async fn registry_garbage_collect(config: &Config) -> anyhow::Result<()> {
+	let broken = unreadable_manifest_tags(config);
+	if !broken.is_empty() {
+		ui::warn(format!(
+			"skipping garbage-collect: {} unreadable manifest(s) would be deleted",
+			broken.len()
+		));
+		for tag in broken {
+			ui::warn_note(format!(
+				"{tag} (restart the registry sandbox and purge this repository before mirroring again)"
+			));
+		}
+		return Ok(());
+	}
 	let Some(handle) = find_sandbox(&config.registry.name).await? else {
 		return Ok(());
 	};
@@ -386,6 +429,22 @@ pub async fn registry_garbage_collect(config: &Config) -> anyhow::Result<()> {
 			exec.args(["garbage-collect", "/etc/docker/registry/config.yml"])
 		})
 		.await?;
+	let options = RestartOptions {
+		force: true,
+		detached: true,
+		..Default::default()
+	};
+	match handle.restart_with(options).await {
+		Ok(_) => ui::note(format!(
+			"restarted registry sandbox {}",
+			config.registry.name
+		)),
+		Err(err) => ui::warn(format!(
+			"registry garbage-collect finished but the sandbox could not be restarted ({err}); \
+			 run `svm restart {}` before re-pushing a deleted image",
+			config.registry.name
+		)),
+	}
 	Ok(())
 }
 

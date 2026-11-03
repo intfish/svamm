@@ -236,7 +236,6 @@ pub async fn rm(config: &Config, args: &crate::cli::ImageRmCli) -> anyhow::Resul
 	let cache_ref = format!("{}/{name}", config.registry_host());
 	if config::dry_run() {
 		println!("svamm image rm: would delete registry image {name} ({digest})");
-		println!("svamm image rm: would garbage-collect the local registry");
 		println!("svamm image rm: would remove cached image {cache_ref}");
 		return Ok(());
 	}
@@ -247,17 +246,32 @@ pub async fn rm(config: &Config, args: &crate::cli::ImageRmCli) -> anyhow::Resul
 				"repository {repository} is now empty and will not be listed"
 			));
 		}
+		ui::note("orphaned registry blobs remain; `svamm image gc` reclaims the disk");
 	} else {
 		ui::warn(format!("failed to delete registry image {name}"));
+	}
+	remove_cached_image(&cache_ref, Some(&digest)).await;
+	Ok(())
+}
+
+/// `svamm image gc` - reclaim registry disk taken by deleted images.
+///
+/// `image rm` and `prune` delete manifests but leave the blobs orphaned; only
+/// registry garbage-collect removes them. distribution's gc is unsafe to run
+/// while the registry serves requests: the running process keeps a stale
+/// manifest-existence cache, so re-pushing a gc'd image recreates the tag
+/// link without the content. svamm therefore runs gc only here, on demand.
+pub async fn gc(config: &Config, _args: &crate::cli::ImageGcCli) -> anyhow::Result<()> {
+	crate::registry::ensure_registry(config).await?;
+	if config::dry_run() {
+		println!("svamm image gc: would garbage-collect the local registry");
+		return Ok(());
 	}
 	ui::step(format!(
 		"garbage-collecting the local registry ({})",
 		config.registry.name
 	));
-	if let Err(err) = crate::registry::registry_garbage_collect(config).await {
-		ui::warn(format!("registry garbage-collect failed: {err}"));
-	}
-	remove_cached_image(&cache_ref, Some(&digest)).await;
+	crate::registry::registry_garbage_collect(config).await?;
 	Ok(())
 }
 

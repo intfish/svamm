@@ -867,6 +867,7 @@ pub async fn image(config: &Config, args: &cli::ImageCli) -> anyhow::Result<()> 
 		cli::ImageCommand::Build(inner) => crate::image::build(config, inner).await,
 		cli::ImageCommand::List(inner) => crate::image::list(config, inner).await,
 		cli::ImageCommand::Rm(inner) => crate::image::rm(config, inner).await,
+		cli::ImageCommand::Gc(inner) => crate::image::gc(config, inner).await,
 	}
 }
 
@@ -878,7 +879,6 @@ pub async fn prune(config: &Config) -> anyhow::Result<()> {
 
 	let keep_digests = registry::used_digests().await?;
 
-	let mut pruned_registry = false;
 	let mut pruned_cache = false;
 
 	let registry_tags = registry::registry_tags(config);
@@ -916,7 +916,6 @@ pub async fn prune(config: &Config) -> anyhow::Result<()> {
 				"deleted unreferenced registry image {}:{tags}",
 				config.registry_ref_prefix()
 			));
-			pruned_registry = true;
 		} else {
 			ui::warn(format!(
 				"failed to delete registry image {}:{tags}",
@@ -925,19 +924,8 @@ pub async fn prune(config: &Config) -> anyhow::Result<()> {
 		}
 	}
 
-	if !groups.is_empty() {
-		if config::dry_run() {
-			println!("svamm prune: would garbage-collect the local registry");
-		} else if pruned_registry {
-			ui::step(format!(
-				"garbage-collecting the local registry ({})",
-				config.registry.name
-			));
-			let result = registry::registry_garbage_collect(config).await;
-			if result.is_err() {
-				ui::warn("registry garbage-collect failed");
-			}
-		}
+	if !groups.is_empty() && !config::dry_run() {
+		ui::note("orphaned registry blobs remain; `svamm image gc` reclaims the disk");
 	}
 
 	let cache_refs = registry::cached_svamm_refs(config).await?;
@@ -959,12 +947,7 @@ pub async fn prune(config: &Config) -> anyhow::Result<()> {
 		}
 	}
 
-	if !config::dry_run()
-		&& !pruned_registry
-		&& !pruned_cache
-		&& groups.is_empty()
-		&& cache_refs_to_remove.is_empty()
-	{
+	if !config::dry_run() && !pruned_cache && groups.is_empty() && cache_refs_to_remove.is_empty() {
 		ui::ok("no unreferenced svamm images to prune");
 	}
 	Ok(())

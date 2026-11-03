@@ -178,6 +178,68 @@ fn image_rm_removes_mirrored_repo_image() {
 }
 
 #[test]
+fn image_rm_resolves_oci_stored_mirrored_image() {
+	// the fake stores manifests as oci and refuses requests that do not
+	// advertise the oci media type, mirroring registry:2. a digest lookup
+	// that sends only the docker schema2 accept header must fail here.
+	let mut env = TestEnv::new();
+	let runtime = tokio::runtime::Runtime::new().unwrap();
+	runtime.block_on(async {
+		env.init_db().await;
+		env.seed_registry().await;
+	});
+	let registry = env.start_fake_catalog_registry(&[("library/redis", &[("8", DIGEST_E)])]);
+	let cache_ref = format!("127.0.0.1:{}/library/redis:8", env.port);
+	runtime.block_on(async {
+		env.seed_cached_image(&cache_ref, DIGEST_E).await;
+	});
+
+	let stdout = env.run_ok(false, &["image", "rm", "library/redis:8"]);
+	assert!(
+		stdout.contains("deleted registry image library/redis:8"),
+		"missing registry delete; got:\n{stdout}"
+	);
+	assert!(
+		registry
+			.deleted
+			.lock()
+			.unwrap()
+			.contains(&DIGEST_E.to_string()),
+		"oci-stored digest must be deleted from the registry"
+	);
+}
+
+#[test]
+fn image_gc_skips_for_unreadable_manifest() {
+	// library/redis:8 is listed by tags/list but its manifest cannot be
+	// read. distribution's gc would mark nothing for that repo and delete the
+	// image's blobs as unreferenced. the guard must refuse to gc and name the
+	// broken tag instead.
+	let mut env = TestEnv::new();
+	let runtime = tokio::runtime::Runtime::new().unwrap();
+	runtime.block_on(async {
+		env.init_db().await;
+		env.seed_registry().await;
+	});
+	let registry =
+		env.start_fake_catalog_registry(&[("library/redis", &[("8", common::BROKEN_MANIFEST)])]);
+
+	let stdout = env.run_ok(false, &["image", "gc"]);
+	assert!(
+		stdout.contains("skipping garbage-collect"),
+		"gc must be refused while a manifest is unreadable; got:\n{stdout}"
+	);
+	assert!(
+		stdout.contains("library/redis:8"),
+		"the broken tag must be named; got:\n{stdout}"
+	);
+	assert!(
+		registry.deleted.lock().unwrap().is_empty(),
+		"nothing is deleted on a skipped gc"
+	);
+}
+
+#[test]
 fn image_rm_removing_last_tag_hides_the_repository() {
 	let mut env = TestEnv::new();
 	let runtime = tokio::runtime::Runtime::new().unwrap();

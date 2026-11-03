@@ -142,6 +142,8 @@ pub enum ImageCommand {
 	/// Remove an image from the local registry and the msb cache (skipped
 	/// while any sandbox still references it).
 	Rm(ImageRmCli),
+	/// Reclaim registry disk from deleted images (registry garbage-collect).
+	Gc(ImageGcCli),
 }
 
 #[derive(Debug, clap::Args)]
@@ -186,6 +188,9 @@ pub struct ImageBuildCli {
 	#[arg(long)]
 	pub no_cache: bool,
 }
+
+#[derive(Debug, clap::Args)]
+pub struct ImageGcCli {}
 
 /// arguments for `svamm completions`.
 #[derive(Debug, clap::Args)]

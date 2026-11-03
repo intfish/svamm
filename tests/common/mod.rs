@@ -353,6 +353,31 @@ impl Default for TestEnv {
 	}
 }
 
+/// the media type the fake stores every manifest as.
+///
+/// the real svamm registry receives docker pushes that produce oci manifests.
+/// registry:2 serves such a manifest only when the request accept header
+/// lists its media type, so the fake mirrors that negotiation. svamm must
+/// advertise the oci type or the manifest reads 404.
+const STORED_MANIFEST_MEDIA_TYPE: &str = "application/vnd.oci.image.manifest.v1+json";
+
+/// true when the request accept header admits the stored oci media type.
+///
+/// a missing accept header (and `*/*`) admits everything, matching registry:2.
+fn manifest_acceptable(headers: &[(String, String)]) -> bool {
+	let Some((_, accept)) = headers
+		.iter()
+		.find(|(key, _)| key.eq_ignore_ascii_case("accept"))
+	else {
+		return true;
+	};
+	let accept = accept.to_ascii_lowercase();
+	accept.split(',').any(|part| {
+		let part = part.trim();
+		part == "*/*" || part == STORED_MANIFEST_MEDIA_TYPE
+	})
+}
+
 fn serve_registry(
 	listener: std::net::TcpListener,
 	repos: std::sync::Arc<
@@ -436,14 +461,20 @@ fn serve_registry(
 					.unwrap()
 					.get(&repo)
 					.is_some_and(|tags| tags.contains_key(tag));
-				if !known {
+				let broken = repos
+					.lock()
+					.unwrap()
+					.get(&repo)
+					.and_then(|tags| tags.get(tag))
+					.is_some_and(|digest| digest == BROKEN_MANIFEST);
+				if !known || broken || !manifest_acceptable(&request.headers) {
 					HttpResponse::not_found()
 				} else {
 					// a fixed two-kilobyte layer so `image ls` size tests have
 					// a deterministic value to assert against.
 					let manifest = serde_json::json!({
 						"schemaVersion": 2,
-						"mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+						"mediaType": STORED_MANIFEST_MEDIA_TYPE,
 						"config": {
 							"mediaType": "application/vnd.docker.container.image.v1+json",
 							"size": 0,
@@ -459,7 +490,7 @@ fn serve_registry(
 						status: 200,
 						headers: vec![(
 							"Content-Type".to_string(),
-							"application/vnd.docker.distribution.manifest.v2+json".to_string(),
+							STORED_MANIFEST_MEDIA_TYPE.to_string(),
 						)],
 						body: Some(serde_json::to_vec(&manifest).unwrap()),
 					}
@@ -467,22 +498,27 @@ fn serve_registry(
 			}
 			("HEAD", p) if let Some(repo) = repo_of(p, "/manifests/") => {
 				let tag = &p[p.rfind("/manifests/").unwrap() + "/manifests/".len()..];
-				match repos
-					.lock()
-					.unwrap()
-					.get(&repo)
-					.and_then(|tags| tags.get(tag))
-					.cloned()
-				{
-					Some(digest) => HttpResponse {
-						status: 200,
-						headers: vec![
-							("Docker-Content-Digest".to_string(), digest),
-							("Content-Length".to_string(), "0".to_string()),
-						],
-						body: None,
-					},
-					None => HttpResponse::not_found(),
+				if !manifest_acceptable(&request.headers) {
+					HttpResponse::not_found()
+				} else {
+					match repos
+						.lock()
+						.unwrap()
+						.get(&repo)
+						.and_then(|tags| tags.get(tag))
+						.cloned()
+					{
+						Some(digest) if digest == BROKEN_MANIFEST => HttpResponse::not_found(),
+						Some(digest) => HttpResponse {
+							status: 200,
+							headers: vec![
+								("Docker-Content-Digest".to_string(), digest),
+								("Content-Length".to_string(), "0".to_string()),
+							],
+							body: None,
+						},
+						None => HttpResponse::not_found(),
+					}
 				}
 			}
 			("DELETE", p) if let Some(repo) = repo_of(p, "/manifests/") => {
@@ -588,6 +624,7 @@ pub fn start_fake_oci_registry() -> FakeOciRegistry {
 struct HttpRequest {
 	method: String,
 	path: String,
+	headers: Vec<(String, String)>,
 }
 
 struct HttpResponse {
@@ -626,7 +663,21 @@ fn read_request(stream: &mut std::net::TcpStream) -> Option<HttpRequest> {
 	let mut parts = request_line.split_whitespace();
 	let method = parts.next()?.to_string();
 	let path = parts.next()?.to_string();
-	Some(HttpRequest { method, path })
+	let mut headers = Vec::new();
+	for line in lines {
+		let line = line.trim_end_matches('\r');
+		if line.is_empty() {
+			break;
+		}
+		if let Some((name, value)) = line.split_once(':') {
+			headers.push((name.trim().to_string(), value.trim().to_string()));
+		}
+	}
+	Some(HttpRequest {
+		method,
+		path,
+		headers,
+	})
 }
 
 fn write_response(stream: &mut std::net::TcpStream, response: &HttpResponse) {
@@ -716,3 +767,11 @@ pub const DIGEST_E: &str =
 	"sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 pub const DIGEST_F: &str =
 	"sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+
+/// sentinel manifest digest for a tag that is listed but unreadable.
+///
+/// models the state of a repository whose manifest garbage-collect already
+/// destroyed: `tags/list` still reports the tag, but every read of it 404s.
+/// the fake serves this shape so tests can assert the gc guard that refuses
+/// to run (and destroy the image) while such a tag exists.
+pub const BROKEN_MANIFEST: &str = "sha256:broken00000000000000000000000000000000000";

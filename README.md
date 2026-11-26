@@ -14,6 +14,9 @@ _beware: this is not mature software and sharp edges exist_
 # create a sandbox
 svamm create foobar ~/path/to/project
 
+# create a sandbox, renaming the main mount inside the guest
+svamm create foobar ~/path/to/project --dest ~/work
+
 # open a terminal
 svamm run foobar -t
 
@@ -157,6 +160,7 @@ Settings live under the XDG config directory.
     - overrides: `SVAMM_MAX_CPUS`, `SVAMM_MAX_MEMORY`
 
 The create flags `--root-disk-size`, `--tmpfs-size`, `--quota`, `--cpus`, `--memory`, `--max-cpus`, and `--max-memory` override the defaults for one sandbox.
+The main mount lands at `/home/agent/<host basename>`; `--dest <guest-path>` overrides the guest destination (a leading `~` expands to `/home/agent`).
 
 Mutable state lives under `~/.local/state/svamm/`.
 - Registry data lives in `~/.local/state/svamm/registry`.
@@ -272,6 +276,7 @@ svamm runs a private image registry as a dedicated sandbox combined image with n
 usage:
 - to pull images in a sandbox: `docker pull svamm.internal:<proxy_port>/<image>`.
 - to push images from the host: `docker push 127.0.0.1:<registry_port>/<image>`.
+- `svamm setup` marks the registry host as insecure for podman-family engines (moby docker already treats loopback as insecure by default), so host pushes work on both.
 - see `svamm image mirror -h` for convenience tooling
 
 custom setups:

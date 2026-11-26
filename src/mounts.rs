@@ -68,6 +68,29 @@ pub fn mount_spec(host: &str, mode: &str, agent_home: &str) -> MountSpec {
 	}
 }
 
+/// resolve and validate an explicit guest destination.
+///
+/// a leading `~` expands to the agent home. the result must be an absolute
+/// guest path. trailing slashes are dropped, except for the root.
+pub fn resolve_guest_dest(dest: &str, agent_home: &str) -> Result<String, String> {
+	let expanded = match dest.strip_prefix("~/") {
+		Some(rest) => format!("{agent_home}/{rest}"),
+		None if dest == "~" => agent_home.to_string(),
+		None => dest.to_string(),
+	};
+	let normalized = if expanded == "/" {
+		expanded
+	} else {
+		expanded.trim_end_matches('/').to_string()
+	};
+	if !normalized.starts_with('/') {
+		return Err(format!(
+			"--dest must be an absolute guest path, got \"{dest}\""
+		));
+	}
+	Ok(normalized)
+}
+
 /// parse a `host:dest:mode` spec into parts.
 pub fn parse_spec(spec: &str) -> (&str, &str, &str) {
 	let mut parts = spec.splitn(3, ':');
@@ -280,6 +303,39 @@ mod tests {
 		assert_eq!(spec.source, "/home/me/project");
 		assert_eq!(spec.dest, "/home/agent/project");
 		assert_eq!(spec.mode, "rw");
+	}
+
+	#[test]
+	fn resolve_guest_dest_absolutizes() {
+		let home = "/home/agent";
+		assert_eq!(resolve_guest_dest("/work", home).unwrap(), "/work");
+		assert_eq!(resolve_guest_dest("/work/", home).unwrap(), "/work");
+		assert_eq!(resolve_guest_dest("/", home).unwrap(), "/");
+		assert_eq!(
+			resolve_guest_dest("~/bar", home).unwrap(),
+			"/home/agent/bar"
+		);
+		assert_eq!(resolve_guest_dest("~", home).unwrap(), "/home/agent");
+	}
+
+	#[test]
+	fn resolve_guest_dest_rejects_relative() {
+		let home = "/home/agent";
+		assert!(
+			resolve_guest_dest("bar", home)
+				.unwrap_err()
+				.contains("absolute")
+		);
+		assert!(
+			resolve_guest_dest("", home)
+				.unwrap_err()
+				.contains("absolute")
+		);
+		assert!(
+			resolve_guest_dest("a/b", home)
+				.unwrap_err()
+				.contains("absolute")
+		);
 	}
 
 	#[test]

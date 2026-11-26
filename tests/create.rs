@@ -231,6 +231,101 @@ async fn create_quota_override_applies_to_rw_mounts() {
 }
 
 #[tokio::test]
+async fn create_dest_flag_renames_main_mount() {
+	let env = TestEnv::new();
+	env.init_db().await;
+	let proj = tempfile::tempdir().unwrap();
+	std::fs::write(
+		proj.path().join("svamm.json"),
+		r#"{"network": {"allow": []}}"#,
+	)
+	.unwrap();
+	let config = env.create_config(&[
+		"alpha",
+		proj.path().to_str().unwrap(),
+		"--dest",
+		"/home/agent/bar",
+	]);
+	let mount = mount_by_guest(&config, "/home/agent/bar").expect("main mount at custom dest");
+	assert_eq!(mount["host"], proj.path().to_str().unwrap());
+	assert_eq!(mount["options"]["readonly"], false);
+	assert_eq!(config["runtime"]["workdir"], "/home/agent/bar");
+	// the svamm.json overlay follows the custom dest, not the basename.
+	let overlay = mount_by_guest(&config, "/home/agent/bar/svamm.json").expect("overlay");
+	assert_eq!(overlay["host"], env.mask_file().display().to_string());
+	let derived = format!(
+		"/home/agent/{}/svamm.json",
+		proj.path().file_name().unwrap().to_string_lossy()
+	);
+	assert!(
+		mount_by_guest(&config, &derived).is_none(),
+		"no overlay at the basename-derived dest"
+	);
+}
+
+#[tokio::test]
+async fn create_dest_flag_expands_tilde_to_agent_home() {
+	let env = TestEnv::new();
+	env.init_db().await;
+	let proj = tempfile::tempdir().unwrap();
+	let config = env.create_config(&["alpha", proj.path().to_str().unwrap(), "--dest", "~/bar"]);
+	assert_eq!(config["runtime"]["workdir"], "/home/agent/bar");
+	assert!(mount_by_guest(&config, "/home/agent/bar").is_some());
+}
+
+#[tokio::test]
+async fn create_dest_flag_requires_main_mount() {
+	let env = TestEnv::new();
+	env.init_db().await;
+	common::expect_stderr_contains(
+		&env,
+		&["create", "alpha", "--dest", "/home/agent/bar"],
+		"--dest requires a main mount",
+	);
+}
+
+#[tokio::test]
+async fn create_dest_flag_rejects_relative_dest() {
+	let env = TestEnv::new();
+	env.init_db().await;
+	let proj = tempfile::tempdir().unwrap();
+	common::expect_stderr_contains(
+		&env,
+		&[
+			"create",
+			"alpha",
+			proj.path().to_str().unwrap(),
+			"--dest",
+			"bar",
+		],
+		"--dest must be an absolute guest path",
+	);
+}
+
+#[tokio::test]
+async fn create_dest_flag_conflict_fails() {
+	let env = TestEnv::new();
+	env.init_db().await;
+	let proj = tempfile::tempdir().unwrap();
+	let base = tempfile::tempdir().unwrap();
+	let extra = base.path().join("extra");
+	std::fs::create_dir(&extra).unwrap();
+	common::expect_stderr_contains(
+		&env,
+		&[
+			"create",
+			"alpha",
+			proj.path().to_str().unwrap(),
+			"--dest",
+			"/home/agent/extra",
+			"--rw",
+			extra.to_str().unwrap(),
+		],
+		"mount destination conflict: '/home/agent/extra'",
+	);
+}
+
+#[tokio::test]
 async fn create_rejects_invalid_quota() {
 	let env = TestEnv::new();
 	env.init_db().await;

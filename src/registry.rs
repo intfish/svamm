@@ -229,6 +229,82 @@ pub fn ensure_registry_config(config: &Config) -> anyhow::Result<()> {
 	Ok(())
 }
 
+/// ensure the host container engine treats the local registry as insecure.
+///
+/// moby docker already treats 127.0.0.0/8 as insecure by default, so pushes
+/// over plain http work without configuration. engines built on
+/// containers/image (podman and its `docker` aliases) only allow plain http
+/// for registries explicitly listed as insecure in registries.conf. write the
+/// per-user drop-in those engines read, so host-side pushes work there too.
+/// best-effort: engine detection and write failures warn, never fail.
+pub fn ensure_host_engine_registry(config: &Config) {
+	if config::dry_run() || !host_engine_is_podman() {
+		return;
+	}
+	let home = paths::home_dir();
+	let host = config.registry_host();
+	if let Err(err) = ensure_dropin_for_host(&home, &host) {
+		ui::warn(format!(
+			"could not mark {host} insecure for the container engine: {err}"
+		));
+	}
+}
+
+/// true when `docker` resolves to a podman-family engine.
+///
+/// moby prints "Docker version ..."; podman's docker alias prints
+/// "podman version ...". an unreadable probe means no docker, which cannot
+/// push anyway, so it is not podman for our purposes.
+fn host_engine_is_podman() -> bool {
+	match std::process::Command::new("docker")
+		.arg("--version")
+		.output()
+	{
+		Ok(output) => version_output_is_podman(&String::from_utf8_lossy(&output.stdout)),
+		Err(_) => false,
+	}
+}
+
+fn version_output_is_podman(output: &str) -> bool {
+	output.to_ascii_lowercase().contains("podman")
+}
+
+/// the per-user containers/image registries.conf drop-in directory.
+///
+/// engines read `~/.config/containers/registries.conf.d` on every lookup,
+/// with or without a main user registries.conf.
+fn registries_dropin_dir(home: &std::path::Path) -> std::path::PathBuf {
+	home.join(".config/containers/registries.conf.d")
+}
+
+/// write the drop-in marking `host` insecure, when not already covered.
+fn ensure_dropin_for_host(home: &std::path::Path, host: &str) -> anyhow::Result<()> {
+	let dir = registries_dropin_dir(home);
+	let path = dir.join("svamm-registry.conf");
+	if let Ok(existing) = std::fs::read_to_string(&path)
+		&& existing.contains(&format!("location = \"{host}\""))
+		&& existing.contains("insecure = true")
+	{
+		return Ok(());
+	}
+	std::fs::create_dir_all(&dir)?;
+	std::fs::write(&path, dropin_content(host))?;
+	ui::note(format!(
+		"marked {host} insecure for the container engine in {}",
+		path.display()
+	));
+	Ok(())
+}
+
+fn dropin_content(host: &str) -> String {
+	format!(
+		"# written by svamm: the local image registry serves plain http on loopback.\n\
+		 [[registry]]\n\
+		 location = \"{host}\"\n\
+		 insecure = true\n"
+	)
+}
+
 /// a shared http agent with a 5-second timeout for registry admin calls.
 fn registry_http() -> ureq::Agent {
 	ureq::Agent::config_builder()
@@ -698,5 +774,52 @@ mod tests {
 			serde_json::json!(32 * 1024),
 			"registry data mount must carry the configured guest-write quota"
 		);
+	}
+
+	#[test]
+	fn version_output_is_podman_matches_podman_and_not_moby() {
+		assert!(version_output_is_podman("podman version 4.9.3"));
+		assert!(version_output_is_podman("PODMAN version 5.0.1"));
+		assert!(!version_output_is_podman(
+			"Docker version 29.8.1, build 4a63305"
+		));
+		assert!(!version_output_is_podman(""));
+	}
+
+	#[test]
+	fn dropin_content_marks_the_configured_host_insecure() {
+		let content = dropin_content("127.0.0.1:50000");
+		assert!(content.contains("location = \"127.0.0.1:50000\""));
+		assert!(content.contains("insecure = true"));
+	}
+
+	#[test]
+	fn ensure_dropin_for_host_writes_once_and_is_idempotent() {
+		let dir = tempfile::tempdir().unwrap();
+		let path = registries_dropin_dir(dir.path()).join("svamm-registry.conf");
+
+		ensure_dropin_for_host(dir.path(), "127.0.0.1:50000").unwrap();
+		let first = std::fs::read_to_string(&path).unwrap();
+		assert!(first.contains("location = \"127.0.0.1:50000\""));
+
+		ensure_dropin_for_host(dir.path(), "127.0.0.1:50000").unwrap();
+		assert_eq!(
+			std::fs::read_to_string(&path).unwrap(),
+			first,
+			"an already-covered host must not be rewritten"
+		);
+	}
+
+	#[test]
+	fn ensure_dropin_for_host_rewrites_when_the_port_changes() {
+		let dir = tempfile::tempdir().unwrap();
+		ensure_dropin_for_host(dir.path(), "127.0.0.1:50000").unwrap();
+
+		ensure_dropin_for_host(dir.path(), "127.0.0.1:50001").unwrap();
+		let content =
+			std::fs::read_to_string(registries_dropin_dir(dir.path()).join("svamm-registry.conf"))
+				.unwrap();
+		assert!(content.contains("location = \"127.0.0.1:50001\""));
+		assert!(!content.contains("127.0.0.1:50000"));
 	}
 }

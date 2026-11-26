@@ -10,7 +10,7 @@ use crate::cli;
 use crate::config::{self, Config, VERSION};
 use crate::mounts::{
 	MountSpec, abs_path, check_mount_conflicts, mount_kind, mount_spec, project_config,
-	project_mount_spec, project_mounts,
+	project_mount_spec, project_mounts, resolve_guest_dest,
 };
 use crate::paths;
 use crate::ports;
@@ -70,6 +70,7 @@ pub async fn setup(config: &Config) -> anyhow::Result<()> {
 
 	ui::step("ensure local registry configuration");
 	registry::ensure_registry_config(config)?;
+	registry::ensure_host_engine_registry(config);
 
 	ui::step(format!(
 		"installing registry image ({})",
@@ -192,11 +193,19 @@ pub async fn create(config: &Config, args: &cli::CreateCli) -> anyhow::Result<()
 	let mut main_dest: Option<String> = None;
 	if let Some(mount) = &args.mount {
 		let spec = mount_spec(mount, "rw", &config.agent.home);
-		main_dest = Some(spec.dest.clone());
+		let dest = match &args.dest {
+			Some(dest) => {
+				resolve_guest_dest(dest, &config.agent.home).map_err(anyhow::Error::msg)?
+			}
+			None => spec.dest.clone(),
+		};
+		main_dest = Some(dest.clone());
 		specs.push(format!(
 			"{}:{}:{},quota={}",
-			spec.source, spec.dest, spec.mode, quota
+			spec.source, dest, spec.mode, quota
 		));
+	} else if args.dest.is_some() {
+		anyhow::bail!("--dest requires a main mount (the first positional argument)");
 	}
 	for mount in &args.rw {
 		let spec = mount_spec(mount, "rw", &config.agent.home);

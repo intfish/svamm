@@ -26,6 +26,7 @@ pub async fn pull(config: &Config, args: &crate::cli::ImagePullCli) -> anyhow::R
 	if is_local_registry_reference(config, &reference) {
 		crate::registry::ensure_registry(config).await?;
 		crate::registry::wait_ready(config).await?;
+		crate::registry::ensure_host_engine_registry(config);
 	}
 	run_docker(&["pull", &reference])?;
 	run_docker(&["tag", &reference, &local])?;
@@ -48,6 +49,7 @@ pub async fn mirror(config: &Config, args: &crate::cli::ImageMirrorCli) -> anyho
 	if !config::dry_run() {
 		crate::registry::ensure_registry(config).await?;
 		crate::registry::wait_ready(config).await?;
+		crate::registry::ensure_host_engine_registry(config);
 	}
 	let reference = resolve_base(config, args.reference.as_deref())?;
 	let name = if args.reference.is_none() && args.as_name.is_none() {
@@ -127,6 +129,7 @@ pub async fn build(config: &Config, args: &crate::cli::ImageBuildCli) -> anyhow:
 	if !config::dry_run() {
 		crate::registry::ensure_registry(config).await?;
 		crate::registry::wait_ready(config).await?;
+		crate::registry::ensure_host_engine_registry(config);
 	}
 	let local_ref = format!("{}/{name}", config.registry_host());
 	run_docker(&docker_build_args(

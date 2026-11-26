@@ -8,6 +8,9 @@ pub struct CreateCli {
 	pub name: String,
 	/// Main rw mount (host path).
 	pub mount: Option<String>,
+	/// Guest destination for the main rw mount (default: /home/agent/<basename>).
+	#[arg(long = "dest", value_name = "guest-path")]
+	pub dest: Option<String>,
 	/// Additional rw mount (host path).
 	#[arg(long = "rw", value_name = "path", action = ArgAction::Append)]
 	pub rw: Vec<String>,
@@ -317,6 +320,25 @@ mod tests {
 				command: ImageCommand::Rm(args),
 			})) => assert_eq!(args.name, "svamm:old-1"),
 			_ => panic!("expected `image rm`"),
+		}
+	}
+
+	#[test]
+	fn create_parses_dest_flag() {
+		let cli = Cli::parse_from([
+			"svamm",
+			"create",
+			"alpha",
+			"/tmp/x",
+			"--dest",
+			"/home/agent/bar",
+		]);
+		match cli.command {
+			Some(Command::Create(args)) => {
+				assert_eq!(args.dest.as_deref(), Some("/home/agent/bar"));
+				assert_eq!(args.mount.as_deref(), Some("/tmp/x"));
+			}
+			_ => panic!("expected `create`"),
 		}
 	}
 
